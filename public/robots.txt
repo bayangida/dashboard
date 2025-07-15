@@ -1,0 +1,10 @@
+# Bayangida Admin Dashboard - Robots.txt
+# This is an administrative interface and should not be crawled
+
+User-agent: *
+Disallow: /
+
+# Allow access to public assets only
+Allow: /favicon.ico
+Allow: /manifest.json
+Allow: /_next/static/
