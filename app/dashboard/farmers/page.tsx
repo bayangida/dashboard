@@ -10,21 +10,24 @@ import { Separator } from "@/components/ui/separator"
 import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage, BreadcrumbLink } from "@/components/ui/breadcrumb"
 import { Input } from "@/components/ui/input"
 import { Search, Eye, CheckCircle, X } from "lucide-react"
-import { collection, getDocs, doc, updateDoc } from "firebase/firestore"
+import { collection, getDocs, doc, updateDoc, query, where } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { useToast } from "@/hooks/use-toast"
 
 interface Farmer {
   id: string
-  name: string
-  email: string
+  firstName: string
+  lastName: string
+  email?: string
   phone: string
-  farmLocation: string
-  farmSize: string
-  cropTypes: string[]
+  farmLocation?: string
+  farmSize?: string
+  cropTypes?: string[]
   status: "pending" | "approved" | "rejected"
-  joinDate: string
-  verificationStatus: "pending" | "verified" | "rejected"
+  createdAt: { seconds: number; nanoseconds: number } | Date
+  verified: boolean
+  userType: string
+  photoUrl?: string
 }
 
 export default function FarmersPage() {
@@ -37,57 +40,37 @@ export default function FarmersPage() {
   useEffect(() => {
     const fetchFarmers = async () => {
       try {
-        const farmersSnapshot = await getDocs(collection(db, "farmers"))
-        const farmersData = farmersSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as Farmer[]
+        // Query users collection where userType is 'farmer'
+        const q = query(collection(db, "users"), where("userType", "==", "farmer"))
+        const farmersSnapshot = await getDocs(q)
+        
+        const farmersData = farmersSnapshot.docs.map((doc) => {
+          const data = doc.data()
+          return {
+            id: doc.id,
+            firstName: data.firstName || '',
+            lastName: data.lastName || '',
+            email: data.email || '',
+            phone: data.phone || '',
+            farmLocation: data.farmLocation || 'Not specified',
+            farmSize: data.farmSize || 'Not specified',
+            cropTypes: data.cropTypes || [],
+            status: data.verified ? "approved" : "pending",
+            createdAt: data.createdAt || new Date(),
+            verified: data.verified || false,
+            userType: data.userType || 'farmer'
+          }
+        }) as Farmer[]
 
         setFarmers(farmersData)
         setFilteredFarmers(farmersData)
       } catch (error) {
         console.error("Error fetching farmers:", error)
-        // Mock data for demonstration
-        const mockFarmers: Farmer[] = [
-          {
-            id: "1",
-            name: "Aminu Hassan",
-            email: "aminu@example.com",
-            phone: "+234 801 234 5678",
-            farmLocation: "Kaduna State",
-            farmSize: "5 hectares",
-            cropTypes: ["Maize", "Rice", "Yam"],
-            status: "pending",
-            joinDate: "2024-01-15",
-            verificationStatus: "pending",
-          },
-          {
-            id: "2",
-            name: "Fatima Abdullahi",
-            email: "fatima@example.com",
-            phone: "+234 802 345 6789",
-            farmLocation: "Kano State",
-            farmSize: "3 hectares",
-            cropTypes: ["Tomatoes", "Onions", "Pepper"],
-            status: "approved",
-            joinDate: "2024-01-20",
-            verificationStatus: "verified",
-          },
-          {
-            id: "3",
-            name: "Ibrahim Musa",
-            email: "ibrahim@example.com",
-            phone: "+234 803 456 7890",
-            farmLocation: "Sokoto State",
-            farmSize: "8 hectares",
-            cropTypes: ["Millet", "Sorghum"],
-            status: "pending",
-            joinDate: "2024-01-10",
-            verificationStatus: "pending",
-          },
-        ]
-        setFarmers(mockFarmers)
-        setFilteredFarmers(mockFarmers)
+        toast({
+          title: "Error",
+          description: "Failed to fetch farmers data",
+          variant: "destructive",
+        })
       } finally {
         setLoading(false)
       }
@@ -99,30 +82,32 @@ export default function FarmersPage() {
   useEffect(() => {
     const filtered = farmers.filter(
       (farmer) =>
-        (farmer.name?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
+        `${farmer.firstName} ${farmer.lastName}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (farmer.email?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
-        (farmer.farmLocation?.toLowerCase() || "").includes(searchTerm.toLowerCase()),
+        (farmer.phone?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
+        (farmer.farmLocation?.toLowerCase() || "").includes(searchTerm.toLowerCase())
     )
     setFilteredFarmers(filtered)
   }, [searchTerm, farmers])
 
   const updateFarmerStatus = async (farmerId: string, newStatus: "approved" | "rejected") => {
     try {
-      await updateDoc(doc(db, "farmers", farmerId), {
-        status: newStatus,
-        verificationStatus: newStatus === "approved" ? "verified" : "rejected",
+      await updateDoc(doc(db, "users", farmerId), {
+        verified: newStatus === "approved",
       })
+      
       setFarmers(
         farmers.map((farmer) =>
           farmer.id === farmerId
             ? {
                 ...farmer,
                 status: newStatus,
-                verificationStatus: newStatus === "approved" ? "verified" : "rejected",
+                verified: newStatus === "approved",
               }
-            : farmer,
-        ),
+            : farmer
+        )
       )
+      
       toast({
         title: "Success",
         description: `Farmer ${newStatus} successfully`,
@@ -137,21 +122,22 @@ export default function FarmersPage() {
     }
   }
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "approved":
-        return (
-          <Badge variant="default" className="bg-green-500">
-            Approved
-          </Badge>
-        )
-      case "pending":
-        return <Badge variant="secondary">Pending</Badge>
-      case "rejected":
-        return <Badge variant="destructive">Rejected</Badge>
-      default:
-        return <Badge variant="outline">{status}</Badge>
+  const formatDate = (date: { seconds: number } | Date) => {
+    if (date instanceof Date) {
+      return date.toLocaleDateString()
+    } else {
+      return new Date(date.seconds * 1000).toLocaleDateString()
     }
+  }
+
+  const getStatusBadge = (verified: boolean) => {
+    return verified ? (
+      <Badge variant="default" className="bg-green-500">
+        Verified
+      </Badge>
+    ) : (
+      <Badge variant="secondary">Pending Verification</Badge>
+    )
   }
 
   return (
@@ -175,14 +161,14 @@ export default function FarmersPage() {
           <Card>
             <CardHeader>
               <CardTitle>Farmer Signups</CardTitle>
-              <CardDescription>Review and approve farmer registrations on the Bayangida platform</CardDescription>
+              <CardDescription>Review and verify farmer registrations on the platform</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="flex items-center space-x-2 mb-4">
                 <div className="relative flex-1">
                   <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="Search farmers by name, email, or location..."
+                    placeholder="Search farmers by name, email, phone, or location..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="pl-8"
@@ -194,11 +180,11 @@ export default function FarmersPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Name</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Phone</TableHead>
+                      <TableHead>Contact</TableHead>
                       <TableHead>Farm Location</TableHead>
                       <TableHead>Farm Size</TableHead>
-                      <TableHead>Crop Types</TableHead>
+                      <TableHead>Crops</TableHead>
+                      <TableHead>Joined</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Actions</TableHead>
                     </TableRow>
@@ -207,7 +193,7 @@ export default function FarmersPage() {
                     {loading ? (
                       <TableRow>
                         <TableCell colSpan={8} className="text-center">
-                          Loading...
+                          Loading farmers...
                         </TableCell>
                       </TableRow>
                     ) : filteredFarmers.length === 0 ? (
@@ -219,27 +205,38 @@ export default function FarmersPage() {
                     ) : (
                       filteredFarmers.map((farmer) => (
                         <TableRow key={farmer.id}>
-                          <TableCell className="font-medium">{farmer.name}</TableCell>
-                          <TableCell>{farmer.email}</TableCell>
-                          <TableCell>{farmer.phone}</TableCell>
+                          <TableCell className="font-medium">
+                            {farmer.firstName} {farmer.lastName}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-col">
+                              <span>{farmer.phone}</span>
+                              {farmer.email && <span className="text-sm text-muted-foreground">{farmer.email}</span>}
+                            </div>
+                          </TableCell>
                           <TableCell>{farmer.farmLocation}</TableCell>
                           <TableCell>{farmer.farmSize}</TableCell>
                           <TableCell>
-                            <div className="flex flex-wrap gap-1">
-                              {farmer.cropTypes.map((crop, index) => (
-                                <Badge key={index} variant="outline" className="text-xs">
-                                  {crop}
-                                </Badge>
-                              ))}
-                            </div>
+                            {farmer.cropTypes && farmer.cropTypes.length > 0 ? (
+                              <div className="flex flex-wrap gap-1">
+                                {farmer.cropTypes.map((crop, index) => (
+                                  <Badge key={index} variant="outline" className="text-xs">
+                                    {crop}
+                                  </Badge>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground">Not specified</span>
+                            )}
                           </TableCell>
-                          <TableCell>{getStatusBadge(farmer.status)}</TableCell>
+                          <TableCell>{formatDate(farmer.createdAt)}</TableCell>
+                          <TableCell>{getStatusBadge(farmer.verified)}</TableCell>
                           <TableCell>
                             <div className="flex items-center space-x-2">
                               <Button variant="outline" size="sm">
                                 <Eye className="h-4 w-4" />
                               </Button>
-                              {farmer.status === "pending" && (
+                              {!farmer.verified && (
                                 <>
                                   <Button
                                     variant="outline"
