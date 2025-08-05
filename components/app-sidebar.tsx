@@ -127,7 +127,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               <Link href="/dashboard">
                 <div className="flex aspect-square size-8 items-center justify-center rounded-lg overflow-hidden">
                   <img
-                    src={BAYANGIDA_LOGO_URL || "/placeholder.svg"}
+                    src={BAYANGIDA_LOGO_URL || "/placeholder.png"}
                     alt="Bayangida Logo"
                     className="size-8 object-contain"
                   />

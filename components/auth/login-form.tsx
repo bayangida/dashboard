@@ -44,7 +44,7 @@ export function LoginForm() {
           <div className="flex justify-center">
             <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-white shadow-lg overflow-hidden">
               <img
-                src={BAYANGIDA_LOGO_URL || "/placeholder.svg"}
+                src={BAYANGIDA_LOGO_URL || "/placeholder.png"}
                 alt="Bayangida Logo"
                 className="h-12 w-12 object-contain"
               />
