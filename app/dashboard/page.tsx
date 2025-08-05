@@ -21,6 +21,9 @@ import {
   CartesianGrid,
   Legend,
 } from "recharts"
+import { collection, query, where, getDocs, getCountFromServer } from "firebase/firestore"
+import { db } from "@/lib/firebase"
+import { useToast } from "@/hooks/use-toast"
 
 interface DashboardStats {
   totalUsers: number
@@ -70,26 +73,63 @@ export default function DashboardPage() {
     weeklyGrowth: 0,
   })
   const [loading, setLoading] = useState(true)
+  const { toast } = useToast()
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        // Simulate API calls with mock data for beautiful display
-        setTimeout(() => {
-          setStats({
-            totalUsers: 1250,
-            totalFarmers: 340,
-            totalDrivers: 89,
-            pendingTransactions: 23,
-            pendingProduce: 15,
-            pendingPayouts: 8,
-            monthlyRevenue: 105000,
-            weeklyGrowth: 12.5,
-          })
-          setLoading(false)
-        }, 1000)
+        // Fetch total users count
+        const usersQuery = query(collection(db, "users"))
+        const usersSnapshot = await getCountFromServer(usersQuery)
+        const totalUsers = usersSnapshot.data().count
+
+        // Fetch farmers count (users with userType = 'farmer')
+        const farmersQuery = query(collection(db, "users"), where("userType", "==", "farmer"))
+        const farmersSnapshot = await getCountFromServer(farmersQuery)
+        const totalFarmers = farmersSnapshot.data().count
+
+        // Fetch drivers count (users with userType = 'driver')
+        const driversQuery = query(collection(db, "users"), where("userType", "==", "driver"))
+        const driversSnapshot = await getCountFromServer(driversQuery)
+        const totalDrivers = driversSnapshot.data().count
+
+        // Fetch pending transactions (example - you'll need to adjust based on your data structure)
+        const pendingTransactionsQuery = query(collection(db, "transactions"), where("status", "==", "pending"))
+        const pendingTransactionsSnapshot = await getCountFromServer(pendingTransactionsQuery)
+        const pendingTransactions = pendingTransactionsSnapshot.data().count
+
+        // Fetch pending produce (example - adjust based on your data)
+        const pendingProduceQuery = query(collection(db, "produce"), where("status", "==", "pending"))
+        const pendingProduceSnapshot = await getCountFromServer(pendingProduceQuery)
+        const pendingProduce = pendingProduceSnapshot.data().count
+
+        // Fetch pending payouts (example - adjust based on your data)
+        const pendingPayoutsQuery = query(collection(db, "payouts"), where("status", "==", "pending"))
+        const pendingPayoutsSnapshot = await getCountFromServer(pendingPayoutsQuery)
+        const pendingPayouts = pendingPayoutsSnapshot.data().count
+
+        // Calculate growth percentage (example logic)
+        const lastMonthUsers = 1100 // You would fetch this from historical data
+        const weeklyGrowth = ((totalUsers - lastMonthUsers) / lastMonthUsers) * 100
+
+        setStats({
+          totalUsers,
+          totalFarmers,
+          totalDrivers,
+          pendingTransactions,
+          pendingProduce,
+          pendingPayouts,
+          monthlyRevenue: 105000, // You would calculate this from transactions
+          weeklyGrowth,
+        })
       } catch (error) {
         console.error("Error fetching stats:", error)
+        toast({
+          title: "Error",
+          description: "Failed to fetch dashboard data",
+          variant: "destructive",
+        })
+      } finally {
         setLoading(false)
       }
     }
@@ -101,17 +141,17 @@ export default function DashboardPage() {
     {
       title: "Total Users",
       value: stats.totalUsers,
-      description: "+12% from last month",
+      description: `${stats.weeklyGrowth > 0 ? '+' : ''}${stats.weeklyGrowth.toFixed(1)}% from last month`,
       icon: Users,
       color: "from-blue-500 to-blue-600",
       textColor: "text-blue-600",
-      trend: "up",
-      change: "+12%",
+      trend: stats.weeklyGrowth >= 0 ? "up" : "down",
+      change: `${stats.weeklyGrowth >= 0 ? '+' : ''}${stats.weeklyGrowth.toFixed(1)}%`,
     },
     {
       title: "Active Farmers",
       value: stats.totalFarmers,
-      description: "+8% from last month",
+      description: "+8% from last month", // You would calculate this like weeklyGrowth
       icon: Tractor,
       color: "from-green-500 to-green-600",
       textColor: "text-green-600",
@@ -121,7 +161,7 @@ export default function DashboardPage() {
     {
       title: "Active Drivers",
       value: stats.totalDrivers,
-      description: "+15% from last month",
+      description: "+15% from last month", // You would calculate this like weeklyGrowth
       icon: Truck,
       color: "from-orange-500 to-orange-600",
       textColor: "text-orange-600",
@@ -131,7 +171,7 @@ export default function DashboardPage() {
     {
       title: "Monthly Revenue",
       value: `₦${stats.monthlyRevenue.toLocaleString()}`,
-      description: "+18% from last month",
+      description: "+18% from last month", // You would calculate this like weeklyGrowth
       icon: DollarSign,
       color: "from-purple-500 to-purple-600",
       textColor: "text-purple-600",
@@ -146,7 +186,7 @@ export default function DashboardPage() {
       color: "from-yellow-500 to-yellow-600",
       textColor: "text-yellow-600",
       trend: "neutral",
-      change: "23 orders",
+      change: `${stats.pendingTransactions} orders`,
     },
     {
       title: "Pending Approvals",
@@ -156,7 +196,7 @@ export default function DashboardPage() {
       color: "from-red-500 to-red-600",
       textColor: "text-red-600",
       trend: "neutral",
-      change: "23 items",
+      change: `${stats.pendingProduce + stats.pendingPayouts} items`,
     },
   ]
 
@@ -201,7 +241,11 @@ export default function DashboardPage() {
               </CardHeader>
               <CardContent className="relative">
                 <div className="text-2xl font-bold mb-1">
-                  {loading ? <div className="h-8 w-20 bg-muted animate-pulse rounded" /> : card.value.toLocaleString()}
+                  {loading ? (
+                    <div className="h-8 w-20 bg-muted animate-pulse rounded" />
+                  ) : (
+                    typeof card.value === 'number' ? card.value.toLocaleString() : card.value
+                  )}
                 </div>
                 <div className="flex items-center space-x-2 text-xs">
                   {card.trend === "up" && <TrendingUp className="h-3 w-3 text-green-500" />}
@@ -385,7 +429,7 @@ export default function DashboardPage() {
                   </div>
                   <div>
                     <p className="font-medium">Approve Produce</p>
-                    <p className="text-sm text-muted-foreground">15 pending</p>
+                    <p className="text-sm text-muted-foreground">{stats.pendingProduce} pending</p>
                   </div>
                 </div>
               </Card>
@@ -396,7 +440,7 @@ export default function DashboardPage() {
                   </div>
                   <div>
                     <p className="font-medium">Process Orders</p>
-                    <p className="text-sm text-muted-foreground">23 waiting</p>
+                    <p className="text-sm text-muted-foreground">{stats.pendingTransactions} waiting</p>
                   </div>
                 </div>
               </Card>
@@ -407,7 +451,7 @@ export default function DashboardPage() {
                   </div>
                   <div>
                     <p className="font-medium">Handle Payouts</p>
-                    <p className="text-sm text-muted-foreground">8 requests</p>
+                    <p className="text-sm text-muted-foreground">{stats.pendingPayouts} requests</p>
                   </div>
                 </div>
               </Card>

@@ -1,7 +1,5 @@
 "use client"
 
-import type React from "react"
-
 import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -37,24 +35,27 @@ const categories = [
 ]
 
 const sizes = ["Small", "Medium", "Large"]
+const units = ["kg", "g", "lb", "oz", "piece", "bunch", "bag"]
 
 export default function ListProducePage() {
   const [formData, setFormData] = useState({
-    produceName: "",
+    productName: "",
     category: "",
     description: "",
-    price: "",
+    price: 0,
     size: "",
     farmerName: "",
     farmerPhone: "",
     farmerLocation: "",
+    quantity: 1,
+    unit: "kg",
   })
   const [selectedImage, setSelectedImage] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const { toast } = useToast()
 
-  const handleInputChange = (field: string, value: string) => {
+  const handleInputChange = (field: string, value: string | number) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
   }
 
@@ -93,13 +94,32 @@ export default function ListProducePage() {
       // Upload image using the utility function
       const imageUrl = await uploadImageToStorage(selectedImage, "produce")
 
-      // Save to Firestore
+      // Generate a unique order ID (similar to Flutter implementation)
+      const orderId = `ORD-${Date.now().toString(36).toUpperCase()}`
+
+      // Save to Firestore - matching the Flutter structure
       await addDoc(collection(db, "produce_listings"), {
-        ...formData,
-        imageUrl,
+        // Product information
+        productName: formData.productName,
+        productImage: imageUrl,
+        category: formData.category,
+        description: formData.description,
+        price: Number(formData.price),
+        size: formData.size,
+        quantity: formData.quantity,
+        unit: formData.unit,
+        status: "active", // Matches Flutter status
+        
+        // Farmer information
+        sellerId: "extension_officer", // Default value since we don't have auth
+        sellerName: formData.farmerName,
+        sellerPhone: formData.farmerPhone,
+        sellerLocation: formData.farmerLocation,
+        
+        // System fields
         createdAt: serverTimestamp(),
-        status: "active",
-        listedBy: "extension_officer", // You can get this from auth context
+        updatedAt: serverTimestamp(),
+        listedBy: "extension_officer",
       })
 
       toast({
@@ -109,14 +129,16 @@ export default function ListProducePage() {
 
       // Reset form
       setFormData({
-        produceName: "",
+        productName: "",
         category: "",
         description: "",
-        price: "",
+        price: 0,
         size: "",
         farmerName: "",
         farmerPhone: "",
         farmerLocation: "",
+        quantity: 1,
+        unit: "kg",
       })
       setSelectedImage(null)
       setImagePreview(null)
@@ -181,12 +203,12 @@ export default function ListProducePage() {
                   <h3 className="text-lg font-semibold text-primary">Produce Details</h3>
 
                   <div className="space-y-2">
-                    <Label htmlFor="produceName">Produce Name *</Label>
+                    <Label htmlFor="productName">Produce Name *</Label>
                     <Input
-                      id="produceName"
+                      id="productName"
                       placeholder="E.g Tomatoes"
-                      value={formData.produceName}
-                      onChange={(e) => handleInputChange("produceName", e.target.value)}
+                      value={formData.productName}
+                      onChange={(e) => handleInputChange("productName", e.target.value)}
                       required
                     />
                   </div>
@@ -219,14 +241,15 @@ export default function ListProducePage() {
                     />
                   </div>
 
-                  <div className="grid gap-4 md:grid-cols-2">
+                  <div className="grid gap-4 md:grid-cols-3">
                     <div className="space-y-2">
-                      <Label htmlFor="price">Price *</Label>
+                      <Label htmlFor="price">Price (₦) *</Label>
                       <Input
                         id="price"
-                        placeholder="₦5,000"
+                        type="number"
+                        placeholder="5000"
                         value={formData.price}
-                        onChange={(e) => handleInputChange("price", e.target.value)}
+                        onChange={(e) => handleInputChange("price", Number(e.target.value))}
                         required
                       />
                     </div>
@@ -246,6 +269,34 @@ export default function ListProducePage() {
                         </SelectContent>
                       </Select>
                     </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="quantity">Quantity *</Label>
+                      <Input
+                        id="quantity"
+                        type="number"
+                        min="1"
+                        value={formData.quantity}
+                        onChange={(e) => handleInputChange("quantity", Number(e.target.value))}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="unit">Unit *</Label>
+                    <Select value={formData.unit} onValueChange={(value) => handleInputChange("unit", value)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select unit" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {units.map((unit) => (
+                          <SelectItem key={unit} value={unit}>
+                            {unit}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
 
