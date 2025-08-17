@@ -10,7 +10,7 @@ import { Separator } from "@/components/ui/separator"
 import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage, BreadcrumbLink } from "@/components/ui/breadcrumb"
 import { Input } from "@/components/ui/input"
 import { Search, Eye, Ban, CheckCircle } from "lucide-react"
-import { collection, getDocs, doc, updateDoc } from "firebase/firestore"
+import { collection, getDocs, doc, updateDoc, query, where } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { useToast } from "@/hooks/use-toast"
 
@@ -34,7 +34,8 @@ export default function UsersPage() {
   useEffect(() => {
     const fetchUsers = async () => {
       try {
-        const usersSnapshot = await getDocs(collection(db, "users"))
+          const q = query(collection(db, "users"), where("userType", "==", "user"))
+        const usersSnapshot = await getDocs(q)
         const usersData = usersSnapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),

@@ -10,7 +10,7 @@ import { Separator } from "@/components/ui/separator"
 import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage, BreadcrumbLink } from "@/components/ui/breadcrumb"
 import { Input } from "@/components/ui/input"
 import { Search, Eye, CheckCircle, X, Truck, MapPin, Phone, Mail } from "lucide-react"
-import { collection, getDocs, doc, updateDoc } from "firebase/firestore"
+import { collection, getDocs, doc, updateDoc, query, where } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { useToast } from "@/hooks/use-toast"
 
@@ -41,7 +41,8 @@ export default function DriversPage() {
   useEffect(() => {
     const fetchDrivers = async () => {
       try {
-        const driversSnapshot = await getDocs(collection(db, "drivers"))
+          const q = query(collection(db, "users"), where("userType", "==", "driver"))
+        const driversSnapshot = await getDocs(q)
         const driversData = driversSnapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
