@@ -61,6 +61,10 @@ const data = {
           title: "Driver Signups",
           url: "/dashboard/drivers",
         },
+        {
+          title: "Active Driver",
+          url: "/dashboard/activedrivers",
+        },
       ],
     },
     {
