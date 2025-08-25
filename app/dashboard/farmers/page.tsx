@@ -179,6 +179,7 @@ export default function FarmersPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-12">S.No</TableHead>
                       <TableHead>Name</TableHead>
                       <TableHead>Contact</TableHead>
                       <TableHead>Farm Location</TableHead>
@@ -192,19 +193,22 @@ export default function FarmersPage() {
                   <TableBody>
                     {loading ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center">
+                        <TableCell colSpan={9} className="text-center">
                           Loading farmers...
                         </TableCell>
                       </TableRow>
                     ) : filteredFarmers.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center">
+                        <TableCell colSpan={9} className="text-center">
                           No farmers found
                         </TableCell>
                       </TableRow>
                     ) : (
-                      filteredFarmers.map((farmer) => (
+                      filteredFarmers.map((farmer, index) => (
                         <TableRow key={farmer.id}>
+                          <TableCell className="text-center font-medium">
+                            {index + 1}
+                          </TableCell>
                           <TableCell className="font-medium">
                             {farmer.firstName} {farmer.lastName}
                           </TableCell>

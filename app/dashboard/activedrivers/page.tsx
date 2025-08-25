@@ -228,6 +228,7 @@ export default function DriversPage() {
                 <Table>
                   <TableHeader className="bg-muted/50">
                     <TableRow>
+                      <TableHead className="font-semibold w-12">S.No</TableHead>
                       <TableHead className="font-semibold">Driver Info</TableHead>
                       <TableHead className="font-semibold">Contact</TableHead>
                       <TableHead className="font-semibold">Vehicle Details</TableHead>
@@ -240,7 +241,7 @@ export default function DriversPage() {
                   <TableBody>
                     {loading ? (
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center py-8">
+                        <TableCell colSpan={8} className="text-center py-8">
                           <div className="flex items-center justify-center space-x-2">
                             <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
                             <span>Loading drivers...</span>
@@ -249,7 +250,7 @@ export default function DriversPage() {
                       </TableRow>
                     ) : filteredDrivers.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center py-8">
+                        <TableCell colSpan={8} className="text-center py-8">
                           <div className="flex flex-col items-center space-y-2">
                             <Truck className="h-12 w-12 text-muted-foreground/50" />
                             <span className="text-muted-foreground">No drivers found</span>
@@ -257,8 +258,9 @@ export default function DriversPage() {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      filteredDrivers.map((driver) => (
+                      filteredDrivers.map((driver, index) => (
                         <TableRow key={driver.id} className="hover:bg-muted/30 transition-colors">
+                          <TableCell className="font-medium text-center">{index + 1}</TableCell>
                           <TableCell>
                             <div className="flex items-center space-x-3">
                               <div className="p-2 rounded-full bg-orange-100 text-orange-600">
