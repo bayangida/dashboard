@@ -50,6 +50,10 @@ const data = {
       icon: Users,
       items: [
         {
+          title: "Waitlist Signups",
+          url: "/dashboard/waitlist",
+        },
+        {
           title: "User Signups",
           url: "/dashboard/users",
         },

@@ -1,0 +1,249 @@
+/* styles/Dashboard.module.css */
+.dashboardContainer {
+    padding: 20px;
+    font-family: 'Poppins', sans-serif;
+    background-color: #f5f5f5;
+    min-height: 100vh;
+  }
+  
+  .dashboardTitle {
+    font-size: 24px;
+    font-weight: 700;
+    color: #042E22;
+    margin-bottom: 20px;
+  }
+  
+  .table {
+    width: 100%;
+    border-collapse: collapse;
+    background-color: white;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+  }
+  
+  .th,
+  .td {
+    padding: 12px 16px;
+    text-align: left;
+  }
+  
+  .th {
+    background-color: #042E22;
+    color: white;
+    font-weight: 600;
+  }
+  
+  .tr {
+    border-bottom: 1px solid #eaeaea;
+  }
+  
+  .tr:last-child {
+    border-bottom: none;
+  }
+  
+  .tr:hover {
+    background-color: #f9f9f9;
+  }
+  .filterContainer {
+    margin-bottom: 20px;
+  }
+  
+  .filterSelect {
+    padding: 5px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+  }
+  
+  .deleteButton {
+    background-color: #ff4d4d;
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  
+  .deleteButton:hover {
+    background-color: #ff1a1a;
+  }
+  /* Existing styles... */
+
+/* Action buttons */
+.actionButtons {
+  display: flex;
+  gap: 8px;
+}
+
+/* Send button */
+.sendButton {
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.sendButton:hover {
+  background-color: #45a049;
+}
+
+/* Group send button */
+.groupSendButton {
+  background-color: #2196F3;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-left: 16px;
+  transition: background-color 0.3s;
+}
+
+.groupSendButton:hover {
+  background-color: #0b7dda;
+}
+
+.groupSendButton:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+}
+
+/* Dialog styles */
+.dialogOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.dialog {
+  background-color: white;
+  padding: 24px;
+  border-radius: 8px;
+  width: 100%;
+  max-width: 600px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.dialog h2 {
+  margin-top: 0;
+  margin-bottom: 20px;
+  color: #333;
+}
+
+.dialogInputGroup {
+  margin-bottom: 16px;
+}
+
+.dialogInputGroup label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.dialogInput {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 16px;
+}
+
+.dialogTextarea {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 16px;
+  resize: vertical;
+}
+
+.dialogButtons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.dialogCancel {
+  background-color: #f44336;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.dialogCancel:hover {
+  background-color: #d32f2f;
+}
+
+.dialogSend {
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.dialogSend:hover {
+  background-color: #388E3C;
+}
+
+.dialogSend:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+}
+.controlButtons {
+  margin-bottom: 20px;
+}
+
+.bulkAddButton {
+  background-color: #673AB7;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.bulkAddButton:hover {
+  background-color: #5E35B1;
+}
+
+/* Edit button */
+.editButton {
+  background-color: #FF9800;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.editButton:hover {
+  background-color: #F57C00;
+}
+
+/* Additional dialog styles */
+.dialog p {
+  margin-bottom: 15px;
+  color: #555;
+  line-height: 1.5;
+}
+
+.dialog strong {
+  color: #333;
+}
