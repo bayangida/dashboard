@@ -8,7 +8,7 @@ import {
   getCoreRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import styles from '../../../styles/Dashboard.module.css';
+import styles from '@/styles/Dashboard.module.css';
 
 const Dashboard = () => {
   const [data, setData] = useState([]);

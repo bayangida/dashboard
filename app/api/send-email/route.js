@@ -1,6 +1,6 @@
 // app/api/send-email/route.js
-import { NextResponse } from 'next/server';
-const Mailjet = require('node-mailjet');
+import { NextResponse } from "next/server";
+import Mailjet from "node-mailjet";
 
 export async function POST(request) {
   const { email, name } = await request.json();
@@ -10,7 +10,6 @@ export async function POST(request) {
     process.env.MAILJET_API_SECRET
   );
 
-  // Email template with logo and better design
   const emailHtml = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
       <div style="text-align: center; margin-bottom: 20px;">
@@ -37,31 +36,28 @@ export async function POST(request) {
     </div>
   `;
 
-  const emailRequest = mailjet.post('send', { version: 'v3.1' }).request({
-    Messages: [
-      {
-        From: {
-          Email: process.env.EMAIL_FROM,
-          Name: 'Bayangida Farms',
-        },
-        To: [
-          {
-            Email: email,
-            Name: name,
-          },
-        ],
-        Subject: 'Welcome to Bayangida Farms!',
-        TextPart: `Hi ${name},\n\nThank you for joining the Bayangida Farms waitlist! We have received your submission and will keep you updated.\n\nBest regards,\nThe Bayangida Farms Marketing Team`,
-        HTMLPart: emailHtml,
-      },
-    ],
-  });
-
   try {
-    await emailRequest;
-    return NextResponse.json({ message: 'Email sent successfully!' });
+    await mailjet.post("send", { version: "v3.1" }).request({
+      Messages: [
+        {
+          From: {
+            Email: process.env.EMAIL_FROM,
+            Name: "Bayangida Farms",
+          },
+          To: [{ Email: email, Name: name }],
+          Subject: "Welcome to Bayangida Farms!",
+          TextPart: `Hi ${name},\n\nThank you for joining the Bayangida Farms waitlist! We have received your submission and will keep you updated.\n\nBest regards,\nThe Bayangida Farms Marketing Team`,
+          HTMLPart: emailHtml,
+        },
+      ],
+    });
+
+    return NextResponse.json({ message: "Email sent successfully!" });
   } catch (error) {
-    console.error('Error sending email:', error);
-    return NextResponse.json({ error: 'Failed to send email' }, { status: 500 });
+    console.error("Error sending email:", error);
+    return NextResponse.json(
+      { error: "Failed to send email" },
+      { status: 500 }
+    );
   }
 }

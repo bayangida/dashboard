@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-const Mailjet = require('node-mailjet');
+import Mailjet from "node-mailjet";
 
 export async function POST(request) {
   const { email, name, subject, content } = await request.json();
