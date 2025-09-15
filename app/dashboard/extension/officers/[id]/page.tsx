@@ -226,7 +226,7 @@ export default function ExtensionOfficerDetailPage() {
       console.error("Error fetching farmer produce:", error)
       toast({
         title: "Error",
-        description: "Failed to fetch farmer's produce",
+        description: "Fail to fetch farmer's produce",
         variant: "destructive",
       })
     } finally {
