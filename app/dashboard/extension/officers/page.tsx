@@ -9,9 +9,14 @@ import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
 import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage, BreadcrumbLink } from "@/components/ui/breadcrumb"
 import { Input } from "@/components/ui/input"
-import { Search, Eye, Phone, Mail, MapPin, Users, Sprout, Plus } from "lucide-react"
-import { collection, getDocs } from "firebase/firestore"
-import { db } from "@/lib/firebase"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Search, Eye, Phone, Mail, MapPin, Users, Sprout, Plus, UserPlus } from "lucide-react"
+import { collection, getDocs, addDoc, serverTimestamp, query, where, getDoc, doc } from "firebase/firestore"
+import { createUserWithEmailAndPassword } from "firebase/auth"
+import { db, auth } from "@/lib/firebase"
+import { useToast } from "@/hooks/use-toast"
+import Link from "next/link"
 
 interface ExtensionOfficer {
   id: string
@@ -32,6 +37,16 @@ export default function ExtensionOfficersPage() {
   const [filteredOfficers, setFilteredOfficers] = useState<ExtensionOfficer[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
+  const [isAddOfficerDialogOpen, setIsAddOfficerDialogOpen] = useState(false)
+  const [newOfficer, setNewOfficer] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    location: "",
+    specialization: "",
+    password: ""
+  })
+  const { toast } = useToast()
 
   useEffect(() => {
     const fetchOfficers = async () => {
@@ -109,6 +124,66 @@ export default function ExtensionOfficersPage() {
     setFilteredOfficers(filtered)
   }, [searchTerm, officers])
 
+  const handleAddOfficer = async () => {
+    try {
+      // Create Firebase authentication account
+      const userCredential = await createUserWithEmailAndPassword(auth, newOfficer.email, newOfficer.password)
+      const userId = userCredential.user.uid
+
+      // Create officer document in Firestore
+      const officerData = {
+        name: newOfficer.name,
+        email: newOfficer.email,
+        phone: newOfficer.phone,
+        location: newOfficer.location,
+        specialization: newOfficer.specialization,
+        assignedFarmers: 0,
+        activeListings: 0,
+        status: "active",
+        joinDate: serverTimestamp(),
+        lastActive: serverTimestamp(),
+        userId: userId,
+        role: "extension_officer"
+      }
+
+      await addDoc(collection(db, "extension_officers"), officerData)
+
+      // Add to local state
+      const newOfficerWithId = {
+        id: userId,
+        ...officerData,
+        joinDate: new Date().toISOString(),
+        lastActive: new Date().toISOString(),
+      } as ExtensionOfficer
+
+      setOfficers([...officers, newOfficerWithId])
+      setFilteredOfficers([...filteredOfficers, newOfficerWithId])
+
+      toast({
+        title: "Success",
+        description: "Extension officer added successfully!",
+      })
+
+      // Reset form and close dialog
+      setNewOfficer({
+        name: "",
+        email: "",
+        phone: "",
+        location: "",
+        specialization: "",
+        password: ""
+      })
+      setIsAddOfficerDialogOpen(false)
+    } catch (error: any) {
+      console.error("Error adding extension officer:", error)
+      toast({
+        title: "Error",
+        description: error.message || "Failed to add extension officer. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "active":
@@ -171,10 +246,86 @@ export default function ExtensionOfficersPage() {
                 <Sprout className="h-5 w-5" />
                 Extension Officers
               </div>
-              <Button className="bg-gradient-to-r from-primary to-secondary">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Officer
-              </Button>
+              <Dialog open={isAddOfficerDialogOpen} onOpenChange={setIsAddOfficerDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button className="bg-gradient-to-r from-primary to-secondary">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Officer
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Add New Extension Officer</DialogTitle>
+                    <DialogDescription>
+                      Add a new extension officer to the platform. They will receive login credentials.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="grid gap-4 py-4">
+                    <div className="grid gap-2">
+                      <Label htmlFor="name">Full Name</Label>
+                      <Input
+                        id="name"
+                        placeholder="Enter officer's full name"
+                        value={newOfficer.name}
+                        onChange={(e) => setNewOfficer({ ...newOfficer, name: e.target.value })}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="email">Email</Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        placeholder="Enter officer's email"
+                        value={newOfficer.email}
+                        onChange={(e) => setNewOfficer({ ...newOfficer, email: e.target.value })}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="phone">Phone Number</Label>
+                      <Input
+                        id="phone"
+                        placeholder="Enter officer's phone number"
+                        value={newOfficer.phone}
+                        onChange={(e) => setNewOfficer({ ...newOfficer, phone: e.target.value })}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="location">Location</Label>
+                      <Input
+                        id="location"
+                        placeholder="Enter officer's location"
+                        value={newOfficer.location}
+                        onChange={(e) => setNewOfficer({ ...newOfficer, location: e.target.value })}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="specialization">Specialization</Label>
+                      <Input
+                        id="specialization"
+                        placeholder="Enter officer's specialization"
+                        value={newOfficer.specialization}
+                        onChange={(e) => setNewOfficer({ ...newOfficer, specialization: e.target.value })}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="password">Password</Label>
+                      <Input
+                        id="password"
+                        type="password"
+                        placeholder="Set a password for the officer"
+                        value={newOfficer.password}
+                        onChange={(e) => setNewOfficer({ ...newOfficer, password: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setIsAddOfficerDialogOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button onClick={handleAddOfficer}>Add Officer</Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             </CardTitle>
             <CardDescription>Monitor and manage extension officers across different regions</CardDescription>
           </CardHeader>
@@ -274,9 +425,11 @@ export default function ExtensionOfficersPage() {
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center space-x-2">
-                            <Button variant="outline" size="sm" className="h-8 w-8 p-0 bg-transparent">
-                              <Eye className="h-4 w-4" />
-                            </Button>
+                            <Link href={`/dashboard/extension/officers/${officer.id}`}>
+                              <Button variant="outline" size="sm" className="h-8 w-8 p-0 bg-transparent">
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                            </Link>
                           </div>
                         </TableCell>
                       </TableRow>
