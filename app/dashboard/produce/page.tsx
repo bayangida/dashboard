@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Search, Eye, CheckCircle, X, Package, Calendar, MapPin, DollarSign, User, Tag, Ruler } from "lucide-react"
+import { Search, Eye, CheckCircle, X, Package, Calendar, MapPin, DollarSign, User, Tag, Ruler, ArrowUpDown } from "lucide-react"
 import { collection, getDocs, doc, updateDoc, query, where } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { useToast } from "@/hooks/use-toast"
@@ -37,6 +37,9 @@ interface Produce {
   rejectionReason?: string
 }
 
+type SortField = "createdAt" | "updatedAt" | "produceName" | "farmerName" | "price"
+type SortOrder = "asc" | "desc"
+
 export default function ProducePage() {
   const [produce, setProduce] = useState<Produce[]>([])
   const [filteredProduce, setFilteredProduce] = useState<Produce[]>([])
@@ -45,6 +48,8 @@ export default function ProducePage() {
   const [selectedProduce, setSelectedProduce] = useState<Produce | null>(null)
   const [rejectionReason, setRejectionReason] = useState("")
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false)
+  const [sortField, setSortField] = useState<SortField>("createdAt")
+  const [sortOrder, setSortOrder] = useState<SortOrder>("desc")
   const { toast } = useToast()
 
   useEffect(() => {
@@ -57,8 +62,15 @@ export default function ProducePage() {
           ...doc.data(),
         })) as Produce[]
 
-        setProduce(produceData)
-        setFilteredProduce(produceData)
+        // Sort by createdAt timestamp by default (newest first)
+        const sortedProduce = produceData.sort((a, b) => {
+          const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt)
+          const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt)
+          return dateB.getTime() - dateA.getTime() // Descending order (newest first)
+        })
+
+        setProduce(sortedProduce)
+        setFilteredProduce(sortedProduce)
       } catch (error) {
         console.error("Error fetching produce:", error)
         toast({
@@ -84,6 +96,49 @@ export default function ProducePage() {
     )
     setFilteredProduce(filtered)
   }, [searchTerm, produce])
+
+  // Sort produce based on selected field and order
+  useEffect(() => {
+    const sortedProduce = [...filteredProduce].sort((a, b) => {
+      let valueA: any, valueB: any
+
+      switch (sortField) {
+        case "createdAt":
+        case "updatedAt":
+          valueA = a[sortField]?.toDate ? a[sortField].toDate() : new Date(a[sortField])
+          valueB = b[sortField]?.toDate ? b[sortField].toDate() : new Date(b[sortField])
+          break
+        case "produceName":
+        case "farmerName":
+          valueA = a[sortField]?.toLowerCase() || ""
+          valueB = b[sortField]?.toLowerCase() || ""
+          break
+        case "price":
+          valueA = a.price
+          valueB = b.price
+          break
+        default:
+          return 0
+      }
+
+      if (sortField === "createdAt" || sortField === "updatedAt") {
+        // For dates, compare timestamps
+        const timeA = valueA.getTime()
+        const timeB = valueB.getTime()
+        return sortOrder === "asc" ? timeA - timeB : timeB - timeA
+      } else if (sortField === "price") {
+        // For numbers
+        return sortOrder === "asc" ? valueA - valueB : valueB - valueA
+      } else {
+        // For strings
+        if (valueA < valueB) return sortOrder === "asc" ? -1 : 1
+        if (valueA > valueB) return sortOrder === "asc" ? 1 : -1
+        return 0
+      }
+    })
+
+    setFilteredProduce(sortedProduce)
+  }, [sortField, sortOrder, produce, searchTerm])
 
   const updateProduceStatus = async (
     produceId: string,
@@ -189,10 +244,45 @@ export default function ProducePage() {
     }
   }
 
+  const formatDateTime = (timestamp: any) => {
+    if (!timestamp) return "N/A"
+    
+    try {
+      if (timestamp.toDate) {
+        return timestamp.toDate().toLocaleString()
+      }
+      return new Date(timestamp).toLocaleString()
+    } catch (error) {
+      return "Invalid date"
+    }
+  }
+
   const openRejectDialog = (item: Produce) => {
     setSelectedProduce(item)
     setRejectionReason("")
     setIsRejectDialogOpen(true)
+  }
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      // Toggle order if same field
+      setSortOrder(sortOrder === "asc" ? "desc" : "asc")
+    } else {
+      // Set new field with default descending order
+      setSortField(field)
+      setSortOrder("desc")
+    }
+  }
+
+  const getSortIcon = (field: SortField) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="h-4 w-4 ml-1 opacity-50" />
+    }
+    return sortOrder === "asc" ? (
+      <ArrowUpDown className="h-4 w-4 ml-1" />
+    ) : (
+      <ArrowUpDown className="h-4 w-4 ml-1 transform rotate-180" />
+    )
   }
 
   return (
@@ -249,10 +339,35 @@ export default function ProducePage() {
                 <Table>
                   <TableHeader className="bg-muted/50">
                     <TableRow>
+                      <TableHead className="font-semibold w-16 text-center">S/N</TableHead>
+                      <TableHead 
+                        className="font-semibold cursor-pointer hover:bg-muted/70 transition-colors"
+                        onClick={() => handleSort("createdAt")}
+                      >
+                        <div className="flex items-center">
+                          Date Created
+                          {getSortIcon("createdAt")}
+                        </div>
+                      </TableHead>
                       <TableHead className="font-semibold">Produce Details</TableHead>
-                      <TableHead className="font-semibold">Farmer</TableHead>
-                      <TableHead className="font-semibold">Quantity & Price</TableHead>
-                      <TableHead className="font-semibold">Dates</TableHead>
+                      <TableHead 
+                        className="font-semibold cursor-pointer hover:bg-muted/70 transition-colors"
+                        onClick={() => handleSort("farmerName")}
+                      >
+                        <div className="flex items-center">
+                          Farmer
+                          {getSortIcon("farmerName")}
+                        </div>
+                      </TableHead>
+                      <TableHead 
+                        className="font-semibold cursor-pointer hover:bg-muted/70 transition-colors"
+                        onClick={() => handleSort("price")}
+                      >
+                        <div className="flex items-center">
+                          Quantity & Price
+                          {getSortIcon("price")}
+                        </div>
+                      </TableHead>
                       <TableHead className="font-semibold">Status</TableHead>
                       <TableHead className="font-semibold">Actions</TableHead>
                     </TableRow>
@@ -260,7 +375,7 @@ export default function ProducePage() {
                   <TableBody>
                     {loading ? (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center py-8">
+                        <TableCell colSpan={7} className="text-center py-8">
                           <div className="flex items-center justify-center space-x-2">
                             <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
                             <span>Loading produce...</span>
@@ -269,7 +384,7 @@ export default function ProducePage() {
                       </TableRow>
                     ) : filteredProduce.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center py-8">
+                        <TableCell colSpan={7} className="text-center py-8">
                           <div className="flex flex-col items-center space-y-2">
                             <Package className="h-12 w-12 text-muted-foreground/50" />
                             <span className="text-muted-foreground">No produce found</span>
@@ -277,8 +392,22 @@ export default function ProducePage() {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      filteredProduce.map((item) => (
+                      filteredProduce.map((item, index) => (
                         <TableRow key={item.id} className="hover:bg-muted/30 transition-colors">
+                          <TableCell className="text-center font-medium text-muted-foreground">
+                            {index + 1}
+                          </TableCell>
+                          <TableCell>
+                            <div className="space-y-1 text-xs">
+                              <div className="flex items-center">
+                                <Calendar className="h-3 w-3 mr-1 text-muted-foreground" />
+                                <span>{formatDate(item.createdAt)}</span>
+                              </div>
+                              <div className="text-muted-foreground text-xs">
+                                {formatDateTime(item.createdAt).split(",")[1]?.trim()}
+                              </div>
+                            </div>
+                          </TableCell>
                           <TableCell>
                             <div className="flex items-center space-x-3">
                               <img
@@ -328,17 +457,6 @@ export default function ProducePage() {
                                   ₦{item.originalPrice.toFixed(2)}
                                 </div>
                               )}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="space-y-1 text-xs">
-                              <div className="flex items-center">
-                                <Calendar className="h-3 w-3 mr-1 text-muted-foreground" />
-                                <span>Created: {formatDate(item.createdAt)}</span>
-                              </div>
-                              <div className="text-muted-foreground">
-                                Updated: {formatDate(item.updatedAt)}
-                              </div>
                             </div>
                           </TableCell>
                           <TableCell>{getStatusBadge(item.status)}</TableCell>
@@ -459,8 +577,8 @@ export default function ProducePage() {
                 
                 <div>
                   <Label className="text-sm font-medium">Dates</Label>
-                  <p className="mt-1 text-sm">Created: {formatDate(selectedProduce.createdAt)}</p>
-                  <p className="text-xs text-muted-foreground">Updated: {formatDate(selectedProduce.updatedAt)}</p>
+                  <p className="mt-1 text-sm">Created: {formatDateTime(selectedProduce.createdAt)}</p>
+                  <p className="text-xs text-muted-foreground">Updated: {formatDateTime(selectedProduce.updatedAt)}</p>
                 </div>
               </div>
               

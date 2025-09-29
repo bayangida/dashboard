@@ -1,249 +1,506 @@
 /* styles/Dashboard.module.css */
 .dashboardContainer {
-    padding: 20px;
-    font-family: 'Poppins', sans-serif;
-    background-color: #f5f5f5;
-    min-height: 100vh;
-  }
-  
-  .dashboardTitle {
-    font-size: 24px;
-    font-weight: 700;
-    color: #042E22;
-    margin-bottom: 20px;
-  }
-  
-  .table {
-    width: 100%;
-    border-collapse: collapse;
-    background-color: white;
-    border-radius: 8px;
-    overflow: hidden;
-    box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
-  }
-  
-  .th,
-  .td {
-    padding: 12px 16px;
-    text-align: left;
-  }
-  
-  .th {
-    background-color: #042E22;
-    color: white;
-    font-weight: 600;
-  }
-  
-  .tr {
-    border-bottom: 1px solid #eaeaea;
-  }
-  
-  .tr:last-child {
-    border-bottom: none;
-  }
-  
-  .tr:hover {
-    background-color: #f9f9f9;
-  }
-  .filterContainer {
-    margin-bottom: 20px;
-  }
-  
-  .filterSelect {
-    padding: 5px;
-    border-radius: 4px;
-    border: 1px solid #ccc;
-  }
-  
-  .deleteButton {
-    background-color: #ff4d4d;
-    color: white;
-    border: none;
-    padding: 5px 10px;
-    border-radius: 4px;
-    cursor: pointer;
-  }
-  
-  .deleteButton:hover {
-    background-color: #ff1a1a;
-  }
-  /* Existing styles... */
+  padding: 20px;
+  font-family: Arial, Helvetica, sans-serif;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  min-height: 100vh;
+  transition: all 0.3s ease;
+}
 
-/* Action buttons */
-.actionButtons {
+.dashboardTitle {
+  font-size: 24px;
+  font-weight: 700;
+  color: hsl(var(--foreground));
+  margin-bottom: 20px;
+}
+
+/* Enhanced Search Styles */
+.enhancedSearchContainer {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 2rem;
+  border-radius: 12px;
+  margin-bottom: 2rem;
+  box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+  color: white;
+}
+
+.searchHeader {
   display: flex;
-  gap: 8px;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
 }
 
-/* Send button */
-.sendButton {
-  background-color: #4CAF50;
+.searchTitle {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0;
   color: white;
+}
+
+.searchResults {
+  font-size: 0.9rem;
+  opacity: 0.9;
+}
+
+.resultsCount {
+  background: rgba(255, 255, 255, 0.2);
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  backdrop-filter: blur(10px);
+  color: white;
+}
+
+.searchInputGroup {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.enhancedSearchInput {
+  width: 100%;
+  padding: 1rem 1.5rem;
+  font-size: 1.1rem;
   border: none;
-  padding: 6px 12px;
-  border-radius: 4px;
+  border-radius: 50px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+  color: hsl(var(--foreground));
+}
+
+.enhancedSearchInput:focus {
+  outline: none;
+  background: white;
+  box-shadow: 0 6px 30px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
+  color: hsl(var(--foreground));
+}
+
+.enhancedSearchInput::placeholder {
+  color: hsl(var(--muted-foreground));
+  opacity: 0.7;
+}
+
+.clearSearchButton {
+  position: absolute;
+  right: 1rem;
+  background: hsl(var(--destructive));
+  color: hsl(var(--destructive-foreground));
+  border: none;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
-  transition: background-color 0.3s;
+  font-size: 0.8rem;
+  transition: all 0.2s ease;
 }
 
-.sendButton:hover {
-  background-color: #45a049;
+.clearSearchButton:hover {
+  background: hsl(var(--destructive) / 0.8);
+  transform: scale(1.1);
 }
 
-/* Group send button */
+/* Filter Container */
+.filterContainer {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  padding: 1.5rem;
+  background: hsl(var(--muted));
+  border-radius: 8px;
+  border: 1px solid hsl(var(--border));
+}
+
+.filterGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.filterLabel {
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  font-size: 0.9rem;
+}
+
+.filterSelect {
+  padding: 0.75rem 1rem;
+  border: 2px solid hsl(var(--border));
+  border-radius: 6px;
+  font-size: 0.95rem;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  transition: border-color 0.2s ease;
+  cursor: pointer;
+}
+
+.filterSelect:focus {
+  outline: none;
+  border-color: hsl(var(--ring));
+}
+
+/* Sort Info */
+.sortInfo {
+  background: hsl(var(--muted));
+  padding: 1rem 1.5rem;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+  border-left: 4px solid hsl(var(--primary));
+  font-size: 0.95rem;
+  color: hsl(var(--foreground));
+}
+
+.totalCount {
+  color: hsl(var(--muted-foreground));
+  font-weight: 500;
+}
+
+/* Control Buttons */
+.controlButtons {
+  margin-bottom: 1.5rem;
+}
+
+.bulkAddButton {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.bulkAddButton:hover {
+  background: hsl(var(--primary) / 0.9);
+  transform: translateY(-1px);
+}
+
 .groupSendButton {
-  background-color: #2196F3;
-  color: white;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  padding: 0.75rem 1.5rem;
   border: none;
-  padding: 8px 16px;
-  border-radius: 4px;
+  border-radius: 6px;
+  font-weight: 600;
   cursor: pointer;
-  margin-left: 16px;
-  transition: background-color 0.3s;
+  transition: all 0.2s ease;
+  white-space: nowrap;
 }
 
-.groupSendButton:hover {
-  background-color: #0b7dda;
+.groupSendButton:hover:not(:disabled) {
+  background: hsl(var(--primary) / 0.9);
+  transform: translateY(-1px);
 }
 
 .groupSendButton:disabled {
-  background-color: #cccccc;
+  background: hsl(var(--muted-foreground) / 0.3);
+  color: hsl(var(--muted-foreground));
   cursor: not-allowed;
+  opacity: 0.6;
 }
 
-/* Dialog styles */
+/* Table Styles */
+.tableContainer {
+  background: hsl(var(--card));
+  color: hsl(var(--card-foreground));
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  border: 1px solid hsl(var(--border));
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.th {
+  background: hsl(var(--muted));
+  padding: 1rem;
+  text-align: left;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  border-bottom: 2px solid hsl(var(--border));
+}
+
+.td {
+  padding: 1rem;
+  border-bottom: 1px solid hsl(var(--border));
+  color: hsl(var(--foreground));
+}
+
+.tr:hover {
+  background: hsl(var(--muted) / 0.5);
+}
+
+.noData {
+  text-align: center;
+  padding: 3rem;
+  color: hsl(var(--muted-foreground));
+  font-style: italic;
+}
+
+/* Sortable Header */
+.sortableHeader {
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.2s ease;
+  color: hsl(var(--foreground));
+}
+
+.sortableHeader:hover {
+  color: hsl(var(--primary));
+}
+
+/* Action Buttons */
+.actionButtons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.sendButton {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  padding: 0.4rem 0.8rem;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.sendButton:hover {
+  background: hsl(var(--primary) / 0.9);
+}
+
+.editButton {
+  background: hsl(var(--warning));
+  color: hsl(var(--warning-foreground));
+  padding: 0.4rem 0.8rem;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.editButton:hover {
+  background: hsl(var(--warning) / 0.9);
+}
+
+.deleteButton {
+  background: hsl(var(--destructive));
+  color: hsl(var(--destructive-foreground));
+  padding: 0.4rem 0.8rem;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.deleteButton:hover {
+  background: hsl(var(--destructive) / 0.9);
+}
+
+/* Dialog Styles */
 .dialogOverlay {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.5);
   display: flex;
-  justify-content: center;
   align-items: center;
+  justify-content: center;
   z-index: 1000;
 }
 
 .dialog {
-  background-color: white;
-  padding: 24px;
-  border-radius: 8px;
-  width: 100%;
+  background: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
+  padding: 2rem;
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
   max-width: 600px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  border: 1px solid hsl(var(--border));
 }
 
 .dialog h2 {
   margin-top: 0;
   margin-bottom: 20px;
-  color: #333;
+  color: hsl(var(--popover-foreground));
 }
 
-.dialogInputGroup {
-  margin-bottom: 16px;
-}
-
-.dialogInputGroup label {
-  display: block;
-  margin-bottom: 8px;
-  font-weight: 500;
-}
-
-.dialogInput {
-  width: 100%;
-  padding: 8px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-size: 16px;
-}
-
-.dialogTextarea {
-  width: 100%;
-  padding: 8px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-size: 16px;
-  resize: vertical;
-}
-
-.dialogButtons {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 16px;
-}
-
-.dialogCancel {
-  background-color: #f44336;
-  color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.dialogCancel:hover {
-  background-color: #d32f2f;
-}
-
-.dialogSend {
-  background-color: #4CAF50;
-  color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.dialogSend:hover {
-  background-color: #388E3C;
-}
-
-.dialogSend:disabled {
-  background-color: #cccccc;
-  cursor: not-allowed;
-}
-.controlButtons {
-  margin-bottom: 20px;
-}
-
-.bulkAddButton {
-  background-color: #673AB7;
-  color: white;
-  border: none;
-  padding: 10px 20px;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background-color 0.3s;
-}
-
-.bulkAddButton:hover {
-  background-color: #5E35B1;
-}
-
-/* Edit button */
-.editButton {
-  background-color: #FF9800;
-  color: white;
-  border: none;
-  padding: 6px 12px;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background-color 0.3s;
-}
-
-.editButton:hover {
-  background-color: #F57C00;
-}
-
-/* Additional dialog styles */
 .dialog p {
   margin-bottom: 15px;
-  color: #555;
+  color: hsl(var(--muted-foreground));
   line-height: 1.5;
 }
 
 .dialog strong {
-  color: #333;
+  color: hsl(var(--popover-foreground));
+}
+
+.dialogInputGroup {
+  margin-bottom: 1.5rem;
+}
+
+.dialogInputGroup label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+  color: hsl(var(--popover-foreground));
+}
+
+.dialogInput {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 2px solid hsl(var(--border));
+  border-radius: 6px;
+  font-size: 1rem;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  transition: border-color 0.2s ease;
+}
+
+.dialogInput:focus {
+  outline: none;
+  border-color: hsl(var(--ring));
+}
+
+.dialogInput:disabled {
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  cursor: not-allowed;
+}
+
+.dialogTextarea {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 2px solid hsl(var(--border));
+  border-radius: 6px;
+  font-size: 1rem;
+  resize: vertical;
+  font-family: inherit;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  transition: border-color 0.2s ease;
+}
+
+.dialogTextarea:focus {
+  outline: none;
+  border-color: hsl(var(--ring));
+}
+
+.dialogButtons {
+  display: flex;
+  gap: 1rem;
+  justify-content: flex-end;
+  margin-top: 2rem;
+}
+
+.dialogCancel {
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.dialogCancel:hover {
+  background: hsl(var(--muted-foreground) / 0.2);
+}
+
+.dialogSend {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.dialogSend:hover {
+  background: hsl(var(--primary) / 0.9);
+}
+
+.dialogSend:disabled,
+.dialogCancel:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .enhancedSearchContainer {
+    padding: 1.5rem;
+  }
+  
+  .searchHeader {
+    flex-direction: column;
+    gap: 1rem;
+    align-items: flex-start;
+  }
+  
+  .filterContainer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1rem;
+  }
+  
+  .actionButtons {
+    flex-direction: column;
+  }
+  
+  .dialog {
+    margin: 1rem;
+    width: calc(100% - 2rem);
+    padding: 1.5rem;
+  }
+  
+  .dialogButtons {
+    flex-direction: column;
+  }
+  
+  .th, .td {
+    padding: 0.75rem 0.5rem;
+    font-size: 0.9rem;
+  }
+}
+
+/* Print Styles */
+@media print {
+  .dashboardContainer {
+    background: white;
+    color: black;
+  }
+  
+  .controlButtons,
+  .filterContainer,
+  .actionButtons {
+    display: none;
+  }
+  
+  .tableContainer {
+    box-shadow: none;
+    border: 1px solid #000;
+  }
 }
