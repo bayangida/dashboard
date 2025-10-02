@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
 import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage } from "@/components/ui/breadcrumb"
-import { Users, Tractor, Truck, CreditCard, Package, DollarSign, TrendingUp, TrendingDown } from "lucide-react"
+import { Users, Tractor, Truck, CreditCard, Package, DollarSign, TrendingUp, TrendingDown, Calendar } from "lucide-react"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import {
   Area,
@@ -21,7 +21,7 @@ import {
   CartesianGrid,
   Legend,
 } from "recharts"
-import { collection, query, where, getDocs, getCountFromServer } from "firebase/firestore"
+import { collection, query, where, getDocs, getCountFromServer, orderBy, Timestamp } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { useToast } from "@/hooks/use-toast"
 
@@ -36,29 +36,28 @@ interface DashboardStats {
   weeklyGrowth: number
 }
 
-const monthlyData = [
-  { month: "Jan", users: 120, farmers: 45, drivers: 12, revenue: 45000 },
-  { month: "Feb", users: 180, farmers: 62, drivers: 18, revenue: 52000 },
-  { month: "Mar", users: 240, farmers: 78, drivers: 25, revenue: 61000 },
-  { month: "Apr", users: 320, farmers: 95, drivers: 32, revenue: 74000 },
-  { month: "May", users: 450, farmers: 125, drivers: 45, revenue: 89000 },
-  { month: "Jun", users: 580, farmers: 156, drivers: 58, revenue: 105000 },
-]
+interface DailySignupData {
+  date: string
+  farmers: number
+  drivers: number
+  total: number
+}
+
+interface UserData {
+  userType: string
+  createdAt: Timestamp
+}
+
+interface TransactionData {
+  status: string
+  amount?: number
+  createdAt: Timestamp
+}
 
 const transactionData = [
   { name: "Completed", value: 65, color: "#B0FF66" },
   { name: "Processing", value: 25, color: "#042E22" },
   { name: "Pending", value: 10, color: "#6B7280" },
-]
-
-const revenueData = [
-  { day: "Mon", revenue: 12000 },
-  { day: "Tue", revenue: 15000 },
-  { day: "Wed", revenue: 18000 },
-  { day: "Thu", revenue: 14000 },
-  { day: "Fri", revenue: 22000 },
-  { day: "Sat", revenue: 25000 },
-  { day: "Sun", revenue: 19000 },
 ]
 
 export default function DashboardPage() {
@@ -72,45 +71,87 @@ export default function DashboardPage() {
     monthlyRevenue: 0,
     weeklyGrowth: 0,
   })
+  const [dailySignups, setDailySignups] = useState<DailySignupData[]>([])
+  const [monthlyData, setMonthlyData] = useState<any[]>([])
+  const [revenueData, setRevenueData] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const { toast } = useToast()
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        // Fetch total users count
-        const usersQuery = query(collection(db, "users"))
-        const usersSnapshot = await getCountFromServer(usersQuery)
-        const totalUsers = usersSnapshot.data().count
+        // Fetch all users with their data
+        const usersQuery = query(collection(db, "users"), )
+        const usersSnapshot = await getDocs(usersQuery)
+        const usersData: UserData[] = usersSnapshot.docs.map(doc => doc.data() as UserData)
+        const totalUsers = usersData.length
 
-        // Fetch farmers count (users with userType = 'farmer')
-        const farmersQuery = query(collection(db, "users"), where("userType", "==", "farmer"))
-        const farmersSnapshot = await getCountFromServer(farmersQuery)
-        const totalFarmers = farmersSnapshot.data().count
+        // Calculate user type counts
+        const totalFarmers = usersData.filter(user => user.userType === "farmer").length
+        const totalDrivers = usersData.filter(user => user.userType === "driver").length
 
-        // Fetch drivers count (users with userType = 'driver')
-        const driversQuery = query(collection(db, "users"), where("userType", "==", "driver"))
-        const driversSnapshot = await getCountFromServer(driversQuery)
-        const totalDrivers = driversSnapshot.data().count
-
-        // Fetch pending transactions (example - you'll need to adjust based on your data structure)
+        // Fetch pending transactions
         const pendingTransactionsQuery = query(collection(db, "transactions"), where("status", "==", "pending"))
         const pendingTransactionsSnapshot = await getCountFromServer(pendingTransactionsQuery)
         const pendingTransactions = pendingTransactionsSnapshot.data().count
 
-        // Fetch pending produce (example - adjust based on your data)
+        // Fetch pending produce
         const pendingProduceQuery = query(collection(db, "produce"), where("status", "==", "pending"))
         const pendingProduceSnapshot = await getCountFromServer(pendingProduceQuery)
         const pendingProduce = pendingProduceSnapshot.data().count
 
-        // Fetch pending payouts (example - adjust based on your data)
+        // Fetch pending payouts
         const pendingPayoutsQuery = query(collection(db, "payouts"), where("status", "==", "pending"))
         const pendingPayoutsSnapshot = await getCountFromServer(pendingPayoutsQuery)
         const pendingPayouts = pendingPayoutsSnapshot.data().count
 
-        // Calculate growth percentage (example logic)
-        const lastMonthUsers = 1100 // You would fetch this from historical data
-        const weeklyGrowth = ((totalUsers - lastMonthUsers) / lastMonthUsers) * 100
+        // Fetch transactions for revenue calculation
+        const transactionsQuery = query(collection(db, "transactions"))
+        const transactionsSnapshot = await getDocs(transactionsQuery)
+        const transactionsData: TransactionData[] = transactionsSnapshot.docs.map(doc => doc.data() as TransactionData)
+
+        // Calculate monthly revenue (last 30 days)
+        const thirtyDaysAgo = new Date()
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+        
+        const monthlyRevenue = transactionsData
+          .filter(transaction => 
+            transaction.createdAt && 
+            transaction.createdAt.toDate() >= thirtyDaysAgo &&
+            transaction.amount
+          )
+          .reduce((sum, transaction) => sum + (transaction.amount || 0), 0)
+
+        // Calculate growth percentage (compared to previous period)
+        const sixtyDaysAgo = new Date()
+        sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60)
+        
+        const previousPeriodUsers = usersData.filter(user => 
+          user.createdAt && 
+          user.createdAt.toDate() >= sixtyDaysAgo &&
+          user.createdAt.toDate() < thirtyDaysAgo
+        ).length
+
+        const currentPeriodUsers = usersData.filter(user => 
+          user.createdAt && 
+          user.createdAt.toDate() >= thirtyDaysAgo
+        ).length
+
+        const weeklyGrowth = previousPeriodUsers > 0 
+          ? ((currentPeriodUsers - previousPeriodUsers) / previousPeriodUsers) * 100 
+          : currentPeriodUsers > 0 ? 100 : 0
+
+        // Process daily signups data
+        const dailyData = processDailySignups(usersData)
+        setDailySignups(dailyData)
+
+        // Process monthly data
+        const monthlyChartData = processMonthlyData(usersData)
+        setMonthlyData(monthlyChartData)
+
+        // Process weekly revenue data
+        const weeklyRevenueData = processWeeklyRevenue(transactionsData)
+        setRevenueData(weeklyRevenueData)
 
         setStats({
           totalUsers,
@@ -119,7 +160,7 @@ export default function DashboardPage() {
           pendingTransactions,
           pendingProduce,
           pendingPayouts,
-          monthlyRevenue: 105000, // You would calculate this from transactions
+          monthlyRevenue,
           weeklyGrowth,
         })
       } catch (error) {
@@ -132,6 +173,96 @@ export default function DashboardPage() {
       } finally {
         setLoading(false)
       }
+    }
+
+    const processDailySignups = (usersData: UserData[]): DailySignupData[] => {
+      const last7Days = Array.from({ length: 7 }, (_, i) => {
+        const date = new Date()
+        date.setDate(date.getDate() - i)
+        return date.toDateString()
+      }).reverse()
+
+      return last7Days.map(dateString => {
+        const date = new Date(dateString)
+        const dayStart = new Date(date.setHours(0, 0, 0, 0))
+        const dayEnd = new Date(date.setHours(23, 59, 59, 999))
+
+        const dayUsers = usersData.filter(user => {
+          if (!user.createdAt) return false
+          const userDate = user.createdAt.toDate()
+          return userDate >= dayStart && userDate <= dayEnd
+        })
+
+        const farmers = dayUsers.filter(user => user.userType === "farmer").length
+        const drivers = dayUsers.filter(user => user.userType === "driver").length
+        const total = farmers + drivers
+
+        return {
+          date: date.toLocaleDateString('en-US', { weekday: 'short' }),
+          farmers,
+          drivers,
+          total
+        }
+      })
+    }
+
+    const processMonthlyData = (usersData: UserData[]): any[] => {
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+      const currentYear = new Date().getFullYear()
+      
+      return months.map(month => {
+        const monthIndex = months.indexOf(month)
+        const monthStart = new Date(currentYear, monthIndex, 1)
+        const monthEnd = new Date(currentYear, monthIndex + 1, 0, 23, 59, 59, 999)
+
+        const monthUsers = usersData.filter(user => {
+          if (!user.createdAt) return false
+          const userDate = user.createdAt.toDate()
+          return userDate >= monthStart && userDate <= monthEnd
+        })
+
+        const farmers = monthUsers.filter(user => user.userType === "farmer").length
+        const drivers = monthUsers.filter(user => user.userType === "driver").length
+        const users = monthUsers.length
+
+        // Calculate revenue for the month (you would need to fetch transaction data for this)
+        const revenue = Math.floor(users * 1500) // Placeholder calculation
+
+        return {
+          month,
+          users,
+          farmers,
+          drivers,
+          revenue
+        }
+      })
+    }
+
+    const processWeeklyRevenue = (transactionsData: TransactionData[]): any[] => {
+      const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+      const today = new Date()
+      
+      return days.map((day, index) => {
+        const dayDate = new Date(today)
+        dayDate.setDate(today.getDate() - (6 - index)) // Get dates for the current week
+        
+        const dayStart = new Date(dayDate.setHours(0, 0, 0, 0))
+        const dayEnd = new Date(dayDate.setHours(23, 59, 59, 999))
+
+        const dayRevenue = transactionsData
+          .filter(transaction => 
+            transaction.createdAt && 
+            transaction.amount &&
+            transaction.createdAt.toDate() >= dayStart &&
+            transaction.createdAt.toDate() <= dayEnd
+          )
+          .reduce((sum, transaction) => sum + (transaction.amount || 0), 0)
+
+        return {
+          day,
+          revenue: dayRevenue || 0
+        }
+      })
     }
 
     fetchStats()
@@ -151,32 +282,32 @@ export default function DashboardPage() {
     {
       title: "Active Farmers",
       value: stats.totalFarmers,
-      description: "+8% from last month", // You would calculate this like weeklyGrowth
+      description: `Farmers registered`,
       icon: Tractor,
       color: "from-green-500 to-green-600",
       textColor: "text-green-600",
       trend: "up",
-      change: "+8%",
+      change: `${stats.totalFarmers}`,
     },
     {
       title: "Active Drivers",
       value: stats.totalDrivers,
-      description: "+15% from last month", // You would calculate this like weeklyGrowth
+      description: `Drivers registered`,
       icon: Truck,
       color: "from-orange-500 to-orange-600",
       textColor: "text-orange-600",
       trend: "up",
-      change: "+15%",
+      change: `${stats.totalDrivers}`,
     },
     {
       title: "Monthly Revenue",
       value: `₦${stats.monthlyRevenue.toLocaleString()}`,
-      description: "+18% from last month", // You would calculate this like weeklyGrowth
+      description: "Last 30 days revenue",
       icon: DollarSign,
       color: "from-purple-500 to-purple-600",
       textColor: "text-purple-600",
       trend: "up",
-      change: "+18%",
+      change: `₦${stats.monthlyRevenue.toLocaleString()}`,
     },
     {
       title: "Pending Orders",
@@ -199,6 +330,20 @@ export default function DashboardPage() {
       change: `${stats.pendingProduce + stats.pendingPayouts} items`,
     },
   ]
+
+  // Calculate today's signups
+  const todaySignups = dailySignups.length > 0 ? dailySignups[dailySignups.length - 1] : { farmers: 0, drivers: 0, total: 0 }
+  const yesterdaySignups = dailySignups.length > 1 ? dailySignups[dailySignups.length - 2] : { farmers: 0, drivers: 0, total: 0 }
+
+  // Calculate farmer growth percentage
+  const farmerGrowth = yesterdaySignups.farmers > 0 
+    ? ((todaySignups.farmers - yesterdaySignups.farmers) / yesterdaySignups.farmers) * 100 
+    : todaySignups.farmers > 0 ? 100 : 0
+
+  // Calculate driver growth percentage
+  const driverGrowth = yesterdaySignups.drivers > 0 
+    ? ((todaySignups.drivers - yesterdaySignups.drivers) / yesterdaySignups.drivers) * 100 
+    : todaySignups.drivers > 0 ? 100 : 0
 
   return (
     <>
@@ -262,6 +407,166 @@ export default function DashboardPage() {
           ))}
         </div>
 
+        {/* Daily Signups Section */}
+        <div className="grid gap-6 md:grid-cols-3">
+          {/* Farmer Signups Card */}
+          <Card className="border-0 shadow-lg">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <div className="p-2 rounded-lg bg-gradient-to-br from-green-500 to-green-600 text-white">
+                  <Tractor className="h-4 w-4" />
+                </div>
+                Farmer Signups
+              </CardTitle>
+              <CardDescription>Daily farmer registrations</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="mb-4">
+                <div className="text-2xl font-bold">
+                  {loading ? (
+                    <div className="h-8 w-20 bg-muted animate-pulse rounded" />
+                  ) : (
+                    todaySignups.farmers
+                  )}
+                </div>
+                <div className="flex items-center space-x-2 text-sm">
+                  {farmerGrowth >= 0 ? (
+                    <TrendingUp className="h-4 w-4 text-green-500" />
+                  ) : (
+                    <TrendingDown className="h-4 w-4 text-red-500" />
+                  )}
+                  <span className={farmerGrowth >= 0 ? "text-green-600" : "text-red-600"}>
+                    {farmerGrowth >= 0 ? '+' : ''}{farmerGrowth.toFixed(1)}% from yesterday
+                  </span>
+                </div>
+              </div>
+              <ChartContainer
+                config={{
+                  farmers: { label: "Farmers", color: "#B0FF66" },
+                }}
+                className="h-[120px]"
+              >
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={dailySignups}>
+                    <Bar 
+                      dataKey="farmers" 
+                      fill="#B0FF66" 
+                      radius={[4, 4, 0, 0]}
+                      opacity={0.8}
+                    />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </ChartContainer>
+            </CardContent>
+          </Card>
+
+          {/* Driver Signups Card */}
+          <Card className="border-0 shadow-lg">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <div className="p-2 rounded-lg bg-gradient-to-br from-orange-500 to-orange-600 text-white">
+                  <Truck className="h-4 w-4" />
+                </div>
+                Driver Signups
+              </CardTitle>
+              <CardDescription>Daily driver registrations</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="mb-4">
+                <div className="text-2xl font-bold">
+                  {loading ? (
+                    <div className="h-8 w-20 bg-muted animate-pulse rounded" />
+                  ) : (
+                    todaySignups.drivers
+                  )}
+                </div>
+                <div className="flex items-center space-x-2 text-sm">
+                  {driverGrowth >= 0 ? (
+                    <TrendingUp className="h-4 w-4 text-green-500" />
+                  ) : (
+                    <TrendingDown className="h-4 w-4 text-red-500" />
+                  )}
+                  <span className={driverGrowth >= 0 ? "text-green-600" : "text-red-600"}>
+                    {driverGrowth >= 0 ? '+' : ''}{driverGrowth.toFixed(1)}% from yesterday
+                  </span>
+                </div>
+              </div>
+              <ChartContainer
+                config={{
+                  drivers: { label: "Drivers", color: "#F59E0B" },
+                }}
+                className="h-[120px]"
+              >
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={dailySignups}>
+                    <Bar 
+                      dataKey="drivers" 
+                      fill="#F59E0B" 
+                      radius={[4, 4, 0, 0]}
+                      opacity={0.8}
+                    />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </ChartContainer>
+            </CardContent>
+          </Card>
+
+          {/* Total Daily Signups Card */}
+          <Card className="border-0 shadow-lg">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white">
+                  <Users className="h-4 w-4" />
+                </div>
+                Total Daily Signups
+              </CardTitle>
+              <CardDescription>Combined daily registrations</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="mb-4">
+                <div className="text-2xl font-bold">
+                  {loading ? (
+                    <div className="h-8 w-20 bg-muted animate-pulse rounded" />
+                  ) : (
+                    todaySignups.total
+                  )}
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  {todaySignups.farmers} farmers + {todaySignups.drivers} drivers
+                </div>
+              </div>
+              <ChartContainer
+                config={{
+                  total: { label: "Total", color: "#3B82F6" },
+                }}
+                className="h-[120px]"
+              >
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={dailySignups}>
+                    <defs>
+                      <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <Area
+                      type="monotone"
+                      dataKey="total"
+                      stroke="#3B82F6"
+                      fillOpacity={1}
+                      fill="url(#colorTotal)"
+                      strokeWidth={2}
+                    />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </ChartContainer>
+            </CardContent>
+          </Card>
+        </div>
+
         {/* Charts Section */}
         <div className="grid gap-6 md:grid-cols-2">
           {/* User Growth Chart */}
@@ -295,6 +600,10 @@ export default function DashboardPage() {
                         <stop offset="5%" stopColor="#B0FF66" stopOpacity={0.3} />
                         <stop offset="95%" stopColor="#B0FF66" stopOpacity={0} />
                       </linearGradient>
+                      <linearGradient id="colorDrivers" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#F59E0B" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#F59E0B" stopOpacity={0} />
+                      </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                     <XAxis dataKey="month" stroke="#6B7280" />
@@ -314,6 +623,14 @@ export default function DashboardPage() {
                       stroke="#B0FF66"
                       fillOpacity={1}
                       fill="url(#colorFarmers)"
+                      strokeWidth={2}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="drivers"
+                      stroke="#F59E0B"
+                      fillOpacity={1}
+                      fill="url(#colorDrivers)"
                       strokeWidth={2}
                     />
                   </AreaChart>

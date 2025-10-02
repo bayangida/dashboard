@@ -27,7 +27,7 @@ interface ExtensionOfficer {
   specialization: string
   assignedFarmers: number
   activeListings: number
-  status: "active" | "inactive"
+  status: "active" | "suspended"
   joinDate: string
   lastActive: string
 }
@@ -238,6 +238,8 @@ export default function ExtensionOfficerDetailPage() {
     switch (status) {
       case "active":
         return <Badge className="bg-green-500">Active</Badge>
+      case "suspended":
+        return <Badge variant="destructive">Suspended</Badge>
       case "inactive":
         return <Badge variant="secondary">Inactive</Badge>
       default:
@@ -492,6 +494,7 @@ export default function ExtensionOfficerDetailPage() {
               <Table>
                 <TableHeader className="bg-muted/50">
                   <TableRow>
+                    <TableHead className="font-semibold w-12">#</TableHead>
                     <TableHead className="font-semibold">Farmer Details</TableHead>
                     <TableHead className="font-semibold">Contact Info</TableHead>
                     <TableHead className="font-semibold">Location</TableHead>
@@ -503,7 +506,7 @@ export default function ExtensionOfficerDetailPage() {
                 <TableBody>
                   {farmersLoading ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8">
+                      <TableCell colSpan={7} className="text-center py-8">
                         <div className="flex items-center justify-center space-x-2">
                           <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
                           <span>Loading farmers...</span>
@@ -512,7 +515,7 @@ export default function ExtensionOfficerDetailPage() {
                     </TableRow>
                   ) : filteredFarmers.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8">
+                      <TableCell colSpan={7} className="text-center py-8">
                         <div className="flex flex-col items-center space-y-2">
                           <Users className="h-12 w-12 text-muted-foreground/50" />
                           <span className="text-muted-foreground">No farmers found</span>
@@ -527,8 +530,13 @@ export default function ExtensionOfficerDetailPage() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredFarmers.map((farmer) => (
+                    filteredFarmers.map((farmer, index) => (
                       <TableRow key={farmer.id} className="hover:bg-muted/30 transition-colors">
+                        <TableCell>
+                          <div className="text-sm text-muted-foreground font-medium">
+                            {index + 1}
+                          </div>
+                        </TableCell>
                         <TableCell>
                           <div className="flex items-center space-x-3">
                             <div className="p-2 rounded-full bg-green-100 text-green-600">

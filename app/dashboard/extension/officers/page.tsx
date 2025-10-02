@@ -11,12 +11,19 @@ import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage, BreadcrumbL
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
-import { Search, Eye, Phone, Mail, MapPin, Users, Sprout, Plus, UserPlus } from "lucide-react"
-import { collection, getDocs, addDoc, serverTimestamp, query, where, getDoc, doc } from "firebase/firestore"
-import { createUserWithEmailAndPassword } from "firebase/auth"
+import { Search, Eye, Phone, Mail, MapPin, Users, Sprout, Plus, UserPlus, MoreVertical, Trash2, Ban, CheckCircle } from "lucide-react"
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, query, where } from "firebase/firestore"
+import { createUserWithEmailAndPassword, updatePassword, deleteUser } from "firebase/auth"
 import { db, auth } from "@/lib/firebase"
 import { useToast } from "@/hooks/use-toast"
 import Link from "next/link"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 interface ExtensionOfficer {
   id: string
@@ -27,9 +34,10 @@ interface ExtensionOfficer {
   specialization: string
   assignedFarmers: number
   activeListings: number
-  status: "active" | "inactive"
+  status: "active" | "suspended"
   joinDate: string
   lastActive: string
+  userId?: string
 }
 
 export default function ExtensionOfficersPage() {
@@ -38,6 +46,9 @@ export default function ExtensionOfficersPage() {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [isAddOfficerDialogOpen, setIsAddOfficerDialogOpen] = useState(false)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [isSuspendDialogOpen, setIsSuspendDialogOpen] = useState(false)
+  const [selectedOfficer, setSelectedOfficer] = useState<ExtensionOfficer | null>(null)
   const [newOfficer, setNewOfficer] = useState({
     name: "",
     email: "",
@@ -184,12 +195,99 @@ export default function ExtensionOfficersPage() {
     }
   }
 
+  const handleSuspendOfficer = async (officer: ExtensionOfficer) => {
+  try {
+    const newStatus: "active" | "suspended" = officer.status === "active" ? "suspended" : "active"
+    
+    // Update in Firestore
+    const officerRef = doc(db, "extension_officers", officer.id)
+    await updateDoc(officerRef, {
+      status: newStatus,
+      lastActive: serverTimestamp()
+    })
+
+    // Update local state - properly type the updated officer
+    const updatedOfficers = officers.map(o => 
+      o.id === officer.id ? { ...o, status: newStatus } : o
+    ) as ExtensionOfficer[]
+    
+    setOfficers(updatedOfficers)
+    setFilteredOfficers(updatedOfficers.filter(o => 
+      o.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      o.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      o.location?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      o.specialization?.toLowerCase().includes(searchTerm.toLowerCase())
+    ))
+
+    toast({
+      title: "Success",
+      description: `Officer ${newStatus === "suspended" ? "suspended" : "reactivated"} successfully!`,
+    })
+
+    setIsSuspendDialogOpen(false)
+    setSelectedOfficer(null)
+  } catch (error) {
+    console.error("Error updating officer status:", error)
+    toast({
+      title: "Error",
+      description: "Failed to update officer status. Please try again.",
+      variant: "destructive",
+    })
+  }
+}
+
+const handleDeleteOfficer = async (officer: ExtensionOfficer) => {
+  try {
+    // Delete from Firestore
+    await deleteDoc(doc(db, "extension_officers", officer.id))
+
+    // If there's a Firebase Auth user, delete it too
+    if (officer.userId) {
+      try {
+        // Note: In a real app, you might want to use a Cloud Function to delete the auth user
+        // since this requires admin privileges on the client side
+        console.log("Auth user deletion would happen here with admin privileges")
+      } catch (authError) {
+        console.error("Error deleting auth user:", authError)
+        // Continue with Firestore deletion even if auth deletion fails
+      }
+    }
+
+    // Update local state
+    const updatedOfficers = officers.filter(o => o.id !== officer.id)
+    setOfficers(updatedOfficers)
+    setFilteredOfficers(updatedOfficers.filter(o => 
+      o.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      o.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      o.location?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      o.specialization?.toLowerCase().includes(searchTerm.toLowerCase())
+    ))
+
+    toast({
+      title: "Success",
+      description: "Officer deleted successfully!",
+    })
+
+    setIsDeleteDialogOpen(false)
+    setSelectedOfficer(null)
+  } catch (error) {
+    console.error("Error deleting officer:", error)
+    toast({
+      title: "Error",
+      description: "Failed to delete officer. Please try again.",
+      variant: "destructive",
+    })
+  }
+}
+
+  
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "active":
         return <Badge className="bg-green-500">Active</Badge>
-      case "inactive":
-        return <Badge variant="secondary">Inactive</Badge>
+      case "suspended":
+        return <Badge variant="destructive">Suspended</Badge>
       default:
         return <Badge variant="outline">{status}</Badge>
     }
@@ -345,6 +443,7 @@ export default function ExtensionOfficersPage() {
               <Table>
                 <TableHeader className="bg-muted/50">
                   <TableRow>
+                    <TableHead className="font-semibold w-12">#</TableHead>
                     <TableHead className="font-semibold">Officer Details</TableHead>
                     <TableHead className="font-semibold">Contact Info</TableHead>
                     <TableHead className="font-semibold">Specialization</TableHead>
@@ -357,7 +456,7 @@ export default function ExtensionOfficersPage() {
                 <TableBody>
                   {loading ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8">
+                      <TableCell colSpan={8} className="text-center py-8">
                         <div className="flex items-center justify-center space-x-2">
                           <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
                           <span>Loading officers...</span>
@@ -366,7 +465,7 @@ export default function ExtensionOfficersPage() {
                     </TableRow>
                   ) : filteredOfficers.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8">
+                      <TableCell colSpan={8} className="text-center py-8">
                         <div className="flex flex-col items-center space-y-2">
                           <Users className="h-12 w-12 text-muted-foreground/50" />
                           <span className="text-muted-foreground">No officers found</span>
@@ -374,8 +473,13 @@ export default function ExtensionOfficersPage() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredOfficers.map((officer) => (
+                    filteredOfficers.map((officer, index) => (
                       <TableRow key={officer.id} className="hover:bg-muted/30 transition-colors">
+                        <TableCell>
+                          <div className="text-sm text-muted-foreground font-medium">
+                            {index + 1}
+                          </div>
+                        </TableCell>
                         <TableCell>
                           <div className="flex items-center space-x-3">
                             <div className="p-2 rounded-full bg-green-100 text-green-600">
@@ -430,6 +534,42 @@ export default function ExtensionOfficersPage() {
                                 <Eye className="h-4 w-4" />
                               </Button>
                             </Link>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="outline" size="sm" className="h-8 w-8 p-0">
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => {
+                                  setSelectedOfficer(officer)
+                                  setIsSuspendDialogOpen(true)
+                                }}>
+                                  {officer.status === "active" ? (
+                                    <>
+                                      <Ban className="h-4 w-4 mr-2" />
+                                      Suspend Account
+                                    </>
+                                  ) : (
+                                    <>
+                                      <CheckCircle className="h-4 w-4 mr-2" />
+                                      Reactivate Account
+                                    </>
+                                  )}
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem 
+                                  onClick={() => {
+                                    setSelectedOfficer(officer)
+                                    setIsDeleteDialogOpen(true)
+                                  }}
+                                  className="text-red-600"
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Delete Account
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -441,6 +581,63 @@ export default function ExtensionOfficersPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Suspend/Reactivate Dialog */}
+      <Dialog open={isSuspendDialogOpen} onOpenChange={setIsSuspendDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {selectedOfficer?.status === "active" ? "Suspend Officer" : "Reactivate Officer"}
+            </DialogTitle>
+            <DialogDescription>
+              {selectedOfficer?.status === "active" 
+                ? `Are you sure you want to suspend ${selectedOfficer?.name}? They will not be able to login until reactivated.`
+                : `Are you sure you want to reactivate ${selectedOfficer?.name}? They will be able to login again.`
+              }
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setIsSuspendDialogOpen(false)
+              setSelectedOfficer(null)
+            }}>
+              Cancel
+            </Button>
+            <Button 
+              variant={selectedOfficer?.status === "active" ? "destructive" : "default"}
+              onClick={() => selectedOfficer && handleSuspendOfficer(selectedOfficer)}
+            >
+              {selectedOfficer?.status === "active" ? "Suspend Officer" : "Reactivate Officer"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Dialog */}
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Officer</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete {selectedOfficer?.name}? This action cannot be undone and all their data will be permanently removed.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setIsDeleteDialogOpen(false)
+              setSelectedOfficer(null)
+            }}>
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive"
+              onClick={() => selectedOfficer && handleDeleteOfficer(selectedOfficer)}
+            >
+              Delete Officer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }
