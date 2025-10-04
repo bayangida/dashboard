@@ -416,9 +416,9 @@ export default function DashboardPage() {
                 <div className="p-2 rounded-lg bg-gradient-to-br from-green-500 to-green-600 text-white">
                   <Tractor className="h-4 w-4" />
                 </div>
-                Farmer Signups
+                Farmer Downloads
               </CardTitle>
-              <CardDescription>Daily farmer registrations</CardDescription>
+              <CardDescription>Daily farmer Downloads</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="mb-4">
@@ -468,9 +468,9 @@ export default function DashboardPage() {
                 <div className="p-2 rounded-lg bg-gradient-to-br from-orange-500 to-orange-600 text-white">
                   <Truck className="h-4 w-4" />
                 </div>
-                Driver Signups
+                Driver Downloads
               </CardTitle>
-              <CardDescription>Daily driver registrations</CardDescription>
+              <CardDescription>Daily driver Downloads</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="mb-4">
@@ -520,9 +520,9 @@ export default function DashboardPage() {
                 <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white">
                   <Users className="h-4 w-4" />
                 </div>
-                Total Daily Signups
+                Total Daily Downloads
               </CardTitle>
-              <CardDescription>Combined daily registrations</CardDescription>
+              <CardDescription>Combined daily Downloads</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="mb-4">
