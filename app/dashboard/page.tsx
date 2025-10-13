@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
 import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage } from "@/components/ui/breadcrumb"
-import { Users, Tractor, Truck, CreditCard, Package, DollarSign, TrendingUp, TrendingDown, Calendar } from "lucide-react"
+import { Users, Tractor, Truck, CreditCard, Package, DollarSign, TrendingUp, TrendingDown, Calendar, User, Download } from "lucide-react"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import {
   Area,
@@ -29,17 +29,23 @@ interface DashboardStats {
   totalUsers: number
   totalFarmers: number
   totalDrivers: number
+  totalConsumers: number
   pendingTransactions: number
   pendingProduce: number
   pendingPayouts: number
   monthlyRevenue: number
   weeklyGrowth: number
+  userGrowth: number
+  totalDownloads: number
+  downloadGrowth: number
 }
 
 interface DailySignupData {
   date: string
+  fullDate: string
   farmers: number
   drivers: number
+  consumers: number
   total: number
 }
 
@@ -60,19 +66,47 @@ const transactionData = [
   { name: "Pending", value: 10, color: "#6B7280" },
 ]
 
+// Custom Tooltip Component
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    return (
+      <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
+        <p className="font-semibold text-gray-800">{data.fullDate}</p>
+        <p className="text-sm text-gray-600 mb-2">{label}</p>
+        {payload.map((entry: any, index: number) => (
+          <p key={index} className="text-sm" style={{ color: entry.color }}>
+            {entry.name}: <span className="font-medium">{entry.value}</span>
+          </p>
+        ))}
+        {data.total && (
+          <p className="text-sm font-medium text-gray-800 mt-1 border-t pt-1">
+            Total: {data.total}
+          </p>
+        )}
+      </div>
+    );
+  }
+  return null;
+};
+
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats>({
     totalUsers: 0,
     totalFarmers: 0,
     totalDrivers: 0,
+    totalConsumers: 0,
     pendingTransactions: 0,
     pendingProduce: 0,
     pendingPayouts: 0,
     monthlyRevenue: 0,
     weeklyGrowth: 0,
+    userGrowth: 0,
+    totalDownloads: 0,
+    downloadGrowth: 0,
   })
   const [dailySignups, setDailySignups] = useState<DailySignupData[]>([])
-  const [monthlyData, setMonthlyData] = useState<any[]>([])
+  const [weeklyData, setWeeklyData] = useState<any[]>([])
   const [revenueData, setRevenueData] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const { toast } = useToast()
@@ -81,7 +115,7 @@ export default function DashboardPage() {
     const fetchStats = async () => {
       try {
         // Fetch all users with their data
-        const usersQuery = query(collection(db, "users"), )
+        const usersQuery = query(collection(db, "users"))
         const usersSnapshot = await getDocs(usersQuery)
         const usersData: UserData[] = usersSnapshot.docs.map(doc => doc.data() as UserData)
         const totalUsers = usersData.length
@@ -89,6 +123,10 @@ export default function DashboardPage() {
         // Calculate user type counts
         const totalFarmers = usersData.filter(user => user.userType === "farmer").length
         const totalDrivers = usersData.filter(user => user.userType === "driver").length
+        const totalConsumers = usersData.filter(user => user.userType === "user").length
+
+        // Calculate total downloads (sum of all users)
+        const totalDownloads = totalUsers
 
         // Fetch pending transactions
         const pendingTransactionsQuery = query(collection(db, "transactions"), where("status", "==", "pending"))
@@ -122,7 +160,7 @@ export default function DashboardPage() {
           )
           .reduce((sum, transaction) => sum + (transaction.amount || 0), 0)
 
-        // Calculate growth percentage (compared to previous period)
+        // Calculate growth percentage for all users (compared to previous period)
         const sixtyDaysAgo = new Date()
         sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60)
         
@@ -141,13 +179,34 @@ export default function DashboardPage() {
           ? ((currentPeriodUsers - previousPeriodUsers) / previousPeriodUsers) * 100 
           : currentPeriodUsers > 0 ? 100 : 0
 
+        // Calculate user growth specifically for consumers
+        const previousPeriodConsumers = usersData.filter(user => 
+          user.createdAt && 
+          user.userType === "user" &&
+          user.createdAt.toDate() >= sixtyDaysAgo &&
+          user.createdAt.toDate() < thirtyDaysAgo
+        ).length
+
+        const currentPeriodConsumers = usersData.filter(user => 
+          user.createdAt && 
+          user.userType === "user" &&
+          user.createdAt.toDate() >= thirtyDaysAgo
+        ).length
+
+        const userGrowth = previousPeriodConsumers > 0 
+          ? ((currentPeriodConsumers - previousPeriodConsumers) / previousPeriodConsumers) * 100 
+          : currentPeriodConsumers > 0 ? 100 : 0
+
+        // Calculate download growth (same as total users growth)
+        const downloadGrowth = weeklyGrowth
+
         // Process daily signups data
         const dailyData = processDailySignups(usersData)
         setDailySignups(dailyData)
 
-        // Process monthly data
-        const monthlyChartData = processMonthlyData(usersData)
-        setMonthlyData(monthlyChartData)
+        // Process weekly data for user growth trends
+        const weeklyChartData = processWeeklyData(usersData)
+        setWeeklyData(weeklyChartData)
 
         // Process weekly revenue data
         const weeklyRevenueData = processWeeklyRevenue(transactionsData)
@@ -157,11 +216,15 @@ export default function DashboardPage() {
           totalUsers,
           totalFarmers,
           totalDrivers,
+          totalConsumers,
           pendingTransactions,
           pendingProduce,
           pendingPayouts,
           monthlyRevenue,
           weeklyGrowth,
+          userGrowth,
+          totalDownloads,
+          downloadGrowth,
         })
       } catch (error) {
         console.error("Error fetching stats:", error)
@@ -179,11 +242,10 @@ export default function DashboardPage() {
       const last7Days = Array.from({ length: 7 }, (_, i) => {
         const date = new Date()
         date.setDate(date.getDate() - i)
-        return date.toDateString()
+        return date
       }).reverse()
 
-      return last7Days.map(dateString => {
-        const date = new Date(dateString)
+      return last7Days.map(date => {
         const dayStart = new Date(date.setHours(0, 0, 0, 0))
         const dayEnd = new Date(date.setHours(23, 59, 59, 999))
 
@@ -195,44 +257,53 @@ export default function DashboardPage() {
 
         const farmers = dayUsers.filter(user => user.userType === "farmer").length
         const drivers = dayUsers.filter(user => user.userType === "driver").length
-        const total = farmers + drivers
+        const consumers = dayUsers.filter(user => user.userType === "user").length
+        const total = farmers + drivers + consumers
 
         return {
           date: date.toLocaleDateString('en-US', { weekday: 'short' }),
+          fullDate: date.toLocaleDateString('en-US', { 
+            year: 'numeric', 
+            month: 'short', 
+            day: 'numeric' 
+          }),
           farmers,
           drivers,
+          consumers,
           total
         }
       })
     }
 
-    const processMonthlyData = (usersData: UserData[]): any[] => {
-      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    const processWeeklyData = (usersData: UserData[]): any[] => {
+      const weeks = ['Week 1', 'Week 2', 'Week 3', 'Week 4']
+      const currentMonth = new Date().getMonth()
       const currentYear = new Date().getFullYear()
       
-      return months.map(month => {
-        const monthIndex = months.indexOf(month)
-        const monthStart = new Date(currentYear, monthIndex, 1)
-        const monthEnd = new Date(currentYear, monthIndex + 1, 0, 23, 59, 59, 999)
+      return weeks.map((week, weekIndex) => {
+        const weekStart = new Date(currentYear, currentMonth, weekIndex * 7 + 1)
+        const weekEnd = new Date(currentYear, currentMonth, (weekIndex + 1) * 7, 23, 59, 59, 999)
 
-        const monthUsers = usersData.filter(user => {
+        const weekUsers = usersData.filter(user => {
           if (!user.createdAt) return false
           const userDate = user.createdAt.toDate()
-          return userDate >= monthStart && userDate <= monthEnd
+          return userDate >= weekStart && userDate <= weekEnd
         })
 
-        const farmers = monthUsers.filter(user => user.userType === "farmer").length
-        const drivers = monthUsers.filter(user => user.userType === "driver").length
-        const users = monthUsers.length
+        const farmers = weekUsers.filter(user => user.userType === "farmer").length
+        const drivers = weekUsers.filter(user => user.userType === "driver").length
+        const consumers = weekUsers.filter(user => user.userType === "user").length
+        const users = weekUsers.length
 
-        // Calculate revenue for the month (you would need to fetch transaction data for this)
-        const revenue = Math.floor(users * 1500) // Placeholder calculation
+        // Calculate revenue for the week (you would need to fetch transaction data for this)
+        const revenue = Math.floor(users * 375) // Placeholder calculation
 
         return {
-          month,
+          week,
           users,
           farmers,
           drivers,
+          consumers,
           revenue
         }
       })
@@ -260,6 +331,11 @@ export default function DashboardPage() {
 
         return {
           day,
+          fullDate: dayDate.toLocaleDateString('en-US', { 
+            year: 'numeric', 
+            month: 'short', 
+            day: 'numeric' 
+          }),
           revenue: dayRevenue || 0
         }
       })
@@ -270,12 +346,22 @@ export default function DashboardPage() {
 
   const statCards = [
     {
+      title: "Total Downloads",
+      value: stats.totalDownloads,
+      description: `${stats.downloadGrowth > 0 ? '+' : ''}${stats.downloadGrowth.toFixed(1)}% from last month`,
+      icon: Download,
+      color: "from-blue-500 to-blue-600",
+      textColor: "text-blue-600",
+      trend: stats.downloadGrowth >= 0 ? "up" : "down",
+      change: `${stats.downloadGrowth >= 0 ? '+' : ''}${stats.downloadGrowth.toFixed(1)}%`,
+    },
+    {
       title: "Total Users",
       value: stats.totalUsers,
       description: `${stats.weeklyGrowth > 0 ? '+' : ''}${stats.weeklyGrowth.toFixed(1)}% from last month`,
       icon: Users,
-      color: "from-blue-500 to-blue-600",
-      textColor: "text-blue-600",
+      color: "from-green-500 to-green-600",
+      textColor: "text-green-600",
       trend: stats.weeklyGrowth >= 0 ? "up" : "down",
       change: `${stats.weeklyGrowth >= 0 ? '+' : ''}${stats.weeklyGrowth.toFixed(1)}%`,
     },
@@ -284,8 +370,8 @@ export default function DashboardPage() {
       value: stats.totalFarmers,
       description: `Farmers registered`,
       icon: Tractor,
-      color: "from-green-500 to-green-600",
-      textColor: "text-green-600",
+      color: "from-emerald-500 to-emerald-600",
+      textColor: "text-emerald-600",
       trend: "up",
       change: `${stats.totalFarmers}`,
     },
@@ -300,12 +386,22 @@ export default function DashboardPage() {
       change: `${stats.totalDrivers}`,
     },
     {
+      title: "Active Consumers",
+      value: stats.totalConsumers,
+      description: `${stats.userGrowth > 0 ? '+' : ''}${stats.userGrowth.toFixed(1)}% from last month`,
+      icon: User,
+      color: "from-purple-500 to-purple-600",
+      textColor: "text-purple-600",
+      trend: stats.userGrowth >= 0 ? "up" : "down",
+      change: `${stats.userGrowth >= 0 ? '+' : ''}${stats.userGrowth.toFixed(1)}%`,
+    },
+    {
       title: "Monthly Revenue",
       value: `₦${stats.monthlyRevenue.toLocaleString()}`,
       description: "Last 30 days revenue",
       icon: DollarSign,
-      color: "from-purple-500 to-purple-600",
-      textColor: "text-purple-600",
+      color: "from-indigo-500 to-indigo-600",
+      textColor: "text-indigo-600",
       trend: "up",
       change: `₦${stats.monthlyRevenue.toLocaleString()}`,
     },
@@ -332,8 +428,8 @@ export default function DashboardPage() {
   ]
 
   // Calculate today's signups
-  const todaySignups = dailySignups.length > 0 ? dailySignups[dailySignups.length - 1] : { farmers: 0, drivers: 0, total: 0 }
-  const yesterdaySignups = dailySignups.length > 1 ? dailySignups[dailySignups.length - 2] : { farmers: 0, drivers: 0, total: 0 }
+  const todaySignups = dailySignups.length > 0 ? dailySignups[dailySignups.length - 1] : { farmers: 0, drivers: 0, consumers: 0, total: 0 }
+  const yesterdaySignups = dailySignups.length > 1 ? dailySignups[dailySignups.length - 2] : { farmers: 0, drivers: 0, consumers: 0, total: 0 }
 
   // Calculate farmer growth percentage
   const farmerGrowth = yesterdaySignups.farmers > 0 
@@ -344,6 +440,11 @@ export default function DashboardPage() {
   const driverGrowth = yesterdaySignups.drivers > 0 
     ? ((todaySignups.drivers - yesterdaySignups.drivers) / yesterdaySignups.drivers) * 100 
     : todaySignups.drivers > 0 ? 100 : 0
+
+  // Calculate consumer growth percentage
+  const consumerGrowth = yesterdaySignups.consumers > 0 
+    ? ((todaySignups.consumers - yesterdaySignups.consumers) / yesterdaySignups.consumers) * 100 
+    : todaySignups.consumers > 0 ? 100 : 0
 
   return (
     <>
@@ -371,7 +472,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {statCards.map((card, index) => (
             <Card
               key={index}
@@ -407,18 +508,168 @@ export default function DashboardPage() {
           ))}
         </div>
 
-        {/* Daily Signups Section */}
-        <div className="grid gap-6 md:grid-cols-3">
-          {/* Farmer Signups Card */}
+        {/* Downloads Overview Section */}
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+          {/* Total Downloads Card */}
           <Card className="border-0 shadow-lg">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <div className="p-2 rounded-lg bg-gradient-to-br from-green-500 to-green-600 text-white">
+                <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white">
+                  <Download className="h-4 w-4" />
+                </div>
+                Total Downloads
+              </CardTitle>
+              <CardDescription>All-time app downloads</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="mb-4">
+                <div className="text-3xl font-bold">
+                  {loading ? (
+                    <div className="h-8 w-20 bg-muted animate-pulse rounded" />
+                  ) : (
+                    stats.totalDownloads.toLocaleString()
+                  )}
+                </div>
+                <div className="flex items-center space-x-2 text-sm mt-2">
+                  {stats.downloadGrowth >= 0 ? (
+                    <TrendingUp className="h-4 w-4 text-green-500" />
+                  ) : (
+                    <TrendingDown className="h-4 w-4 text-red-500" />
+                  )}
+                  <span className={stats.downloadGrowth >= 0 ? "text-green-600" : "text-red-600"}>
+                    {stats.downloadGrowth >= 0 ? '+' : ''}{stats.downloadGrowth.toFixed(1)}% from last month
+                  </span>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="bg-blue-50 rounded-lg p-2">
+                  <div className="text-sm font-medium text-blue-600">Farmers</div>
+                  <div className="text-lg font-bold">{stats.totalFarmers.toLocaleString()}</div>
+                </div>
+                <div className="bg-orange-50 rounded-lg p-2">
+                  <div className="text-sm font-medium text-orange-600">Drivers</div>
+                  <div className="text-lg font-bold">{stats.totalDrivers.toLocaleString()}</div>
+                </div>
+                <div className="bg-purple-50 rounded-lg p-2">
+                  <div className="text-sm font-medium text-purple-600">Consumers</div>
+                  <div className="text-lg font-bold">{stats.totalConsumers.toLocaleString()}</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Farmer Downloads Card */}
+          <Card className="border-0 shadow-lg">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <div className="p-2 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 text-white">
                   <Tractor className="h-4 w-4" />
                 </div>
                 Farmer Downloads
               </CardTitle>
-              <CardDescription>Daily farmer Downloads</CardDescription>
+              <CardDescription>Total farmer registrations</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="mb-4">
+                <div className="text-3xl font-bold">
+                  {loading ? (
+                    <div className="h-8 w-20 bg-muted animate-pulse rounded" />
+                  ) : (
+                    stats.totalFarmers.toLocaleString()
+                  )}
+                </div>
+                <div className="text-sm text-muted-foreground mt-2">
+                  {((stats.totalFarmers / stats.totalDownloads) * 100).toFixed(1)}% of total downloads
+                </div>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div 
+                  className="bg-emerald-500 h-2 rounded-full" 
+                  style={{ width: `${(stats.totalFarmers / stats.totalDownloads) * 100}%` }}
+                ></div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Driver Downloads Card */}
+          <Card className="border-0 shadow-lg">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <div className="p-2 rounded-lg bg-gradient-to-br from-orange-500 to-orange-600 text-white">
+                  <Truck className="h-4 w-4" />
+                </div>
+                Driver Downloads
+              </CardTitle>
+              <CardDescription>Total driver registrations</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="mb-4">
+                <div className="text-3xl font-bold">
+                  {loading ? (
+                    <div className="h-8 w-20 bg-muted animate-pulse rounded" />
+                  ) : (
+                    stats.totalDrivers.toLocaleString()
+                  )}
+                </div>
+                <div className="text-sm text-muted-foreground mt-2">
+                  {((stats.totalDrivers / stats.totalDownloads) * 100).toFixed(1)}% of total downloads
+                </div>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div 
+                  className="bg-orange-500 h-2 rounded-full" 
+                  style={{ width: `${(stats.totalDrivers / stats.totalDownloads) * 100}%` }}
+                ></div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Consumer Downloads Card */}
+          <Card className="border-0 shadow-lg">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <div className="p-2 rounded-lg bg-gradient-to-br from-purple-500 to-purple-600 text-white">
+                  <User className="h-4 w-4" />
+                </div>
+                Consumer Downloads
+              </CardTitle>
+              <CardDescription>Total consumer registrations</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="mb-4">
+                <div className="text-3xl font-bold">
+                  {loading ? (
+                    <div className="h-8 w-20 bg-muted animate-pulse rounded" />
+                  ) : (
+                    stats.totalConsumers.toLocaleString()
+                  )}
+                </div>
+                <div className="text-sm text-muted-foreground mt-2">
+                  {((stats.totalConsumers / stats.totalDownloads) * 100).toFixed(1)}% of total downloads
+                </div>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div 
+                  className="bg-purple-500 h-2 rounded-full" 
+                  style={{ width: `${(stats.totalConsumers / stats.totalDownloads) * 100}%` }}
+                ></div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Daily Signups Section */}
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+          {/* Farmer Signups Card */}
+          <Card className="border-0 shadow-lg">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <div className="p-2 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 text-white">
+                  <Tractor className="h-4 w-4" />
+                </div>
+                Daily Farmer Downloads
+              </CardTitle>
+              <CardDescription>Today's farmer registrations</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="mb-4">
@@ -442,7 +693,7 @@ export default function DashboardPage() {
               </div>
               <ChartContainer
                 config={{
-                  farmers: { label: "Farmers", color: "#B0FF66" },
+                  farmers: { label: "Farmers", color: "#10B981" },
                 }}
                 className="h-[120px]"
               >
@@ -450,11 +701,11 @@ export default function DashboardPage() {
                   <BarChart data={dailySignups}>
                     <Bar 
                       dataKey="farmers" 
-                      fill="#B0FF66" 
+                      fill="#10B981" 
                       radius={[4, 4, 0, 0]}
                       opacity={0.8}
                     />
-                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <ChartTooltip content={<CustomTooltip />} />
                   </BarChart>
                 </ResponsiveContainer>
               </ChartContainer>
@@ -468,9 +719,9 @@ export default function DashboardPage() {
                 <div className="p-2 rounded-lg bg-gradient-to-br from-orange-500 to-orange-600 text-white">
                   <Truck className="h-4 w-4" />
                 </div>
-                Driver Downloads
+                Daily Driver Downloads
               </CardTitle>
-              <CardDescription>Daily driver Downloads</CardDescription>
+              <CardDescription>Today's driver registrations</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="mb-4">
@@ -506,7 +757,59 @@ export default function DashboardPage() {
                       radius={[4, 4, 0, 0]}
                       opacity={0.8}
                     />
-                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <ChartTooltip content={<CustomTooltip />} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </ChartContainer>
+            </CardContent>
+          </Card>
+
+          {/* Consumer Signups Card */}
+          <Card className="border-0 shadow-lg">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <div className="p-2 rounded-lg bg-gradient-to-br from-purple-500 to-purple-600 text-white">
+                  <User className="h-4 w-4" />
+                </div>
+                Daily Consumer Downloads
+              </CardTitle>
+              <CardDescription>Today's consumer registrations</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="mb-4">
+                <div className="text-2xl font-bold">
+                  {loading ? (
+                    <div className="h-8 w-20 bg-muted animate-pulse rounded" />
+                  ) : (
+                    todaySignups.consumers
+                  )}
+                </div>
+                <div className="flex items-center space-x-2 text-sm">
+                  {consumerGrowth >= 0 ? (
+                    <TrendingUp className="h-4 w-4 text-green-500" />
+                  ) : (
+                    <TrendingDown className="h-4 w-4 text-red-500" />
+                  )}
+                  <span className={consumerGrowth >= 0 ? "text-green-600" : "text-red-600"}>
+                    {consumerGrowth >= 0 ? '+' : ''}{consumerGrowth.toFixed(1)}% from yesterday
+                  </span>
+                </div>
+              </div>
+              <ChartContainer
+                config={{
+                  consumers: { label: "Consumers", color: "#8B5CF6" },
+                }}
+                className="h-[120px]"
+              >
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={dailySignups}>
+                    <Bar 
+                      dataKey="consumers" 
+                      fill="#8B5CF6" 
+                      radius={[4, 4, 0, 0]}
+                      opacity={0.8}
+                    />
+                    <ChartTooltip content={<CustomTooltip />} />
                   </BarChart>
                 </ResponsiveContainer>
               </ChartContainer>
@@ -522,7 +825,7 @@ export default function DashboardPage() {
                 </div>
                 Total Daily Downloads
               </CardTitle>
-              <CardDescription>Combined daily Downloads</CardDescription>
+              <CardDescription>Today's combined registrations</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="mb-4">
@@ -534,7 +837,7 @@ export default function DashboardPage() {
                   )}
                 </div>
                 <div className="text-sm text-muted-foreground">
-                  {todaySignups.farmers} farmers + {todaySignups.drivers} drivers
+                  {todaySignups.farmers} farmers + {todaySignups.drivers} drivers + {todaySignups.consumers} consumers
                 </div>
               </div>
               <ChartContainer
@@ -559,7 +862,7 @@ export default function DashboardPage() {
                       fill="url(#colorTotal)"
                       strokeWidth={2}
                     />
-                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <ChartTooltip content={<CustomTooltip />} />
                   </AreaChart>
                 </ResponsiveContainer>
               </ChartContainer>
@@ -569,44 +872,49 @@ export default function DashboardPage() {
 
         {/* Charts Section */}
         <div className="grid gap-6 md:grid-cols-2">
-          {/* User Growth Chart */}
+          {/* User Growth Chart - Weekly */}
           <Card className="border-0 shadow-lg">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white">
                   <TrendingUp className="h-4 w-4" />
                 </div>
-                User Growth Trends
+                Weekly User Growth Trends
               </CardTitle>
-              <CardDescription>Monthly user acquisition across all categories</CardDescription>
+              <CardDescription>Weekly user acquisition across all categories</CardDescription>
             </CardHeader>
             <CardContent>
               <ChartContainer
                 config={{
                   users: { label: "Users", color: "#3B82F6" },
-                  farmers: { label: "Farmers", color: "#B0FF66" },
+                  farmers: { label: "Farmers", color: "#10B981" },
                   drivers: { label: "Drivers", color: "#F59E0B" },
+                  consumers: { label: "Consumers", color: "#8B5CF6" },
                 }}
                 className="h-[300px]"
               >
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={monthlyData}>
+                  <AreaChart data={weeklyData}>
                     <defs>
                       <linearGradient id="colorUsers" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3} />
                         <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
                       </linearGradient>
                       <linearGradient id="colorFarmers" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#B0FF66" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#B0FF66" stopOpacity={0} />
+                        <stop offset="5%" stopColor="#10B981" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
                       </linearGradient>
                       <linearGradient id="colorDrivers" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#F59E0B" stopOpacity={0.3} />
                         <stop offset="95%" stopColor="#F59E0B" stopOpacity={0} />
                       </linearGradient>
+                      <linearGradient id="colorConsumers" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#8B5CF6" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#8B5CF6" stopOpacity={0} />
+                      </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                    <XAxis dataKey="month" stroke="#6B7280" />
+                    <XAxis dataKey="week" stroke="#6B7280" />
                     <YAxis stroke="#6B7280" />
                     <ChartTooltip content={<ChartTooltipContent />} />
                     <Area
@@ -620,7 +928,7 @@ export default function DashboardPage() {
                     <Area
                       type="monotone"
                       dataKey="farmers"
-                      stroke="#B0FF66"
+                      stroke="#10B981"
                       fillOpacity={1}
                       fill="url(#colorFarmers)"
                       strokeWidth={2}
@@ -631,6 +939,14 @@ export default function DashboardPage() {
                       stroke="#F59E0B"
                       fillOpacity={1}
                       fill="url(#colorDrivers)"
+                      strokeWidth={2}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="consumers"
+                      stroke="#8B5CF6"
+                      fillOpacity={1}
+                      fill="url(#colorConsumers)"
                       strokeWidth={2}
                     />
                   </AreaChart>
@@ -687,7 +1003,7 @@ export default function DashboardPage() {
         <Card className="border-0 shadow-lg">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <div className="p-2 rounded-lg bg-gradient-to-br from-purple-500 to-purple-600 text-white">
+              <div className="p-2 rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-600 text-white">
                 <DollarSign className="h-4 w-4" />
               </div>
               Weekly Revenue Trends
@@ -712,7 +1028,7 @@ export default function DashboardPage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                   <XAxis dataKey="day" stroke="#6B7280" />
                   <YAxis stroke="#6B7280" />
-                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <ChartTooltip content={<CustomTooltip />} />
                   <Bar dataKey="revenue" fill="url(#colorRevenue)" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>

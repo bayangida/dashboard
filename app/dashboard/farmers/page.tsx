@@ -9,7 +9,7 @@ import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
 import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage, BreadcrumbLink } from "@/components/ui/breadcrumb"
 import { Input } from "@/components/ui/input"
-import { Search, Eye, CheckCircle, X } from "lucide-react"
+import { Search, Eye, CheckCircle, X, ArrowUpDown } from "lucide-react"
 import { collection, getDocs, doc, updateDoc, query, where } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { useToast } from "@/hooks/use-toast"
@@ -30,17 +30,22 @@ interface Farmer {
   photoUrl?: string
 }
 
+type SortField = "createdAt" | "name" | "status"
+type SortOrder = "asc" | "desc"
+
 export default function FarmersPage() {
   const [farmers, setFarmers] = useState<Farmer[]>([])
   const [filteredFarmers, setFilteredFarmers] = useState<Farmer[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
+  const [sortField, setSortField] = useState<SortField>("createdAt")
+  const [sortOrder, setSortOrder] = useState<SortOrder>("desc")
   const { toast } = useToast()
 
   useEffect(() => {
     const fetchFarmers = async () => {
       try {
-        // Query users collection where userType is 'farmer'
+        // Query users collection where userType is 'farmer' without orderBy
         const q = query(collection(db, "users"), where("userType", "==", "farmer"))
         const farmersSnapshot = await getDocs(q)
         
@@ -58,12 +63,15 @@ export default function FarmersPage() {
             status: data.verified ? "approved" : "pending",
             createdAt: data.createdAt || new Date(),
             verified: data.verified || false,
-            userType: data.userType || 'farmer'
+            userType: data.userType || 'farmer',
+            photoUrl: data.photoUrl || ''
           }
         }) as Farmer[]
 
-        setFarmers(farmersData)
-        setFilteredFarmers(farmersData)
+        // Sort by createdAt on client side initially
+        const sortedFarmers = sortFarmers(farmersData, "createdAt", "desc")
+        setFarmers(sortedFarmers)
+        setFilteredFarmers(sortedFarmers)
       } catch (error) {
         console.error("Error fetching farmers:", error)
         toast({
@@ -80,15 +88,60 @@ export default function FarmersPage() {
   }, [])
 
   useEffect(() => {
-    const filtered = farmers.filter(
+    let filtered = farmers.filter(
       (farmer) =>
         `${farmer.firstName} ${farmer.lastName}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (farmer.email?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
         (farmer.phone?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
         (farmer.farmLocation?.toLowerCase() || "").includes(searchTerm.toLowerCase())
     )
+
+    // Apply sorting
+    filtered = sortFarmers(filtered, sortField, sortOrder)
+    
     setFilteredFarmers(filtered)
-  }, [searchTerm, farmers])
+  }, [searchTerm, farmers, sortField, sortOrder])
+
+  const sortFarmers = (farmersList: Farmer[], field: SortField, order: SortOrder) => {
+    return [...farmersList].sort((a, b) => {
+      let aValue: any
+      let bValue: any
+
+      switch (field) {
+        case "createdAt":
+          aValue = a.createdAt instanceof Date ? a.createdAt.getTime() : a.createdAt.seconds
+          bValue = b.createdAt instanceof Date ? b.createdAt.getTime() : b.createdAt.seconds
+          break
+        case "name":
+          aValue = `${a.firstName} ${a.lastName}`.toLowerCase()
+          bValue = `${b.firstName} ${b.lastName}`.toLowerCase()
+          break
+        case "status":
+          // Define status priority for sorting
+          const statusPriority = { "approved": 2, "pending": 1, "rejected": 0 }
+          aValue = statusPriority[a.status] || 0
+          bValue = statusPriority[b.status] || 0
+          break
+        default:
+          return 0
+      }
+
+      if (order === "asc") {
+        return aValue < bValue ? -1 : aValue > bValue ? 1 : 0
+      } else {
+        return aValue > bValue ? -1 : aValue < bValue ? 1 : 0
+      }
+    })
+  }
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortOrder(sortOrder === "asc" ? "desc" : "asc")
+    } else {
+      setSortField(field)
+      setSortOrder("desc")
+    }
+  }
 
   const updateFarmerStatus = async (farmerId: string, newStatus: "approved" | "rejected") => {
     try {
@@ -124,9 +177,21 @@ export default function FarmersPage() {
 
   const formatDate = (date: { seconds: number } | Date) => {
     if (date instanceof Date) {
-      return date.toLocaleDateString()
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      })
     } else {
-      return new Date(date.seconds * 1000).toLocaleDateString()
+      return new Date(date.seconds * 1000).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      })
     }
   }
 
@@ -137,6 +202,17 @@ export default function FarmersPage() {
       </Badge>
     ) : (
       <Badge variant="secondary">Pending Verification</Badge>
+    )
+  }
+
+  const getSortIcon = (field: SortField) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="h-4 w-4" />
+    }
+    return sortOrder === "asc" ? (
+      <ArrowUpDown className="h-4 w-4 transform rotate-180" />
+    ) : (
+      <ArrowUpDown className="h-4 w-4" />
     )
   }
 
@@ -180,13 +256,37 @@ export default function FarmersPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-12">S.No</TableHead>
-                      <TableHead>Name</TableHead>
+                      <TableHead 
+                        className="cursor-pointer hover:bg-accent"
+                        onClick={() => handleSort("name")}
+                      >
+                        <div className="flex items-center space-x-1">
+                          <span>Name</span>
+                          {getSortIcon("name")}
+                        </div>
+                      </TableHead>
                       <TableHead>Contact</TableHead>
                       <TableHead>Farm Location</TableHead>
                       <TableHead>Farm Size</TableHead>
                       <TableHead>Crops</TableHead>
-                      <TableHead>Joined</TableHead>
-                      <TableHead>Status</TableHead>
+                      <TableHead 
+                        className="cursor-pointer hover:bg-accent"
+                        onClick={() => handleSort("createdAt")}
+                      >
+                        <div className="flex items-center space-x-1">
+                          <span>Joined</span>
+                          {getSortIcon("createdAt")}
+                        </div>
+                      </TableHead>
+                      <TableHead 
+                        className="cursor-pointer hover:bg-accent"
+                        onClick={() => handleSort("status")}
+                      >
+                        <div className="flex items-center space-x-1">
+                          <span>Status</span>
+                          {getSortIcon("status")}
+                        </div>
+                      </TableHead>
                       <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
