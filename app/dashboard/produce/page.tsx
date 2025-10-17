@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Search, Eye, CheckCircle, X, Package, Calendar, MapPin, DollarSign, User, Tag, Ruler, ArrowUpDown } from "lucide-react"
 import { collection, getDocs, doc, updateDoc, query, where } from "firebase/firestore"
 import { db } from "@/lib/firebase"
@@ -39,6 +40,7 @@ interface Produce {
 
 type SortField = "createdAt" | "updatedAt" | "produceName" | "farmerName" | "price"
 type SortOrder = "asc" | "desc"
+type TabType = "pending" | "approved" | "rejected"
 
 export default function ProducePage() {
   const [produce, setProduce] = useState<Produce[]>([])
@@ -50,12 +52,13 @@ export default function ProducePage() {
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false)
   const [sortField, setSortField] = useState<SortField>("createdAt")
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc")
+  const [activeTab, setActiveTab] = useState<TabType>("pending")
   const { toast } = useToast()
 
   useEffect(() => {
     const fetchProduce = async () => {
       try {
-        const produceQuery = query(collection(db, "produce_listings"), where("status", "==", "active"))
+        const produceQuery = collection(db, "produce_listings")
         const produceSnapshot = await getDocs(produceQuery)
         const produceData = produceSnapshot.docs.map((doc) => ({
           id: doc.id,
@@ -70,7 +73,7 @@ export default function ProducePage() {
         })
 
         setProduce(sortedProduce)
-        setFilteredProduce(sortedProduce)
+        filterProduceByTab(sortedProduce, "pending")
       } catch (error) {
         console.error("Error fetching produce:", error)
         toast({
@@ -86,6 +89,30 @@ export default function ProducePage() {
     fetchProduce()
   }, [])
 
+  const filterProduceByTab = (produceList: Produce[], tab: TabType) => {
+    let filtered: Produce[] = []
+    
+    switch (tab) {
+      case "pending":
+        filtered = produceList.filter(item => item.status === "active" || item.status === "pending")
+        break
+      case "approved":
+        filtered = produceList.filter(item => item.status === "approved")
+        break
+      case "rejected":
+        filtered = produceList.filter(item => item.status === "rejected")
+        break
+      default:
+        filtered = produceList.filter(item => item.status === "active" || item.status === "pending")
+    }
+    
+    setFilteredProduce(filtered)
+  }
+
+  useEffect(() => {
+    filterProduceByTab(produce, activeTab)
+  }, [activeTab, produce])
+
   useEffect(() => {
     const filtered = produce.filter(
       (item) =>
@@ -94,8 +121,8 @@ export default function ProducePage() {
         (item.farmerName?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
         (item.tag?.toLowerCase() || "").includes(searchTerm.toLowerCase()),
     )
-    setFilteredProduce(filtered)
-  }, [searchTerm, produce])
+    filterProduceByTab(filtered, activeTab)
+  }, [searchTerm, produce, activeTab])
 
   // Sort produce based on selected field and order
   useEffect(() => {
@@ -138,7 +165,7 @@ export default function ProducePage() {
     })
 
     setFilteredProduce(sortedProduce)
-  }, [sortField, sortOrder, produce, searchTerm])
+  }, [sortField, sortOrder])
 
   const updateProduceStatus = async (
     produceId: string,
@@ -156,29 +183,32 @@ export default function ProducePage() {
       }
 
       await updateDoc(doc(db, "produce_listings", produceId), updateData)
-      setProduce(
-        produce.map((item) =>
-          item.id === produceId
-            ? {
-                ...item,
-                status: newStatus,
-                level: newStatus === "approved" ? "approved" : "not approved",
-                rejectionReason: reason || item.rejectionReason,
-              }
-            : item,
-        ),
-      )
+      
+      // Update local state with proper typing
+      const updatedProduce = produce.map((item) => {
+        if (item.id === produceId) {
+          return {
+            ...item,
+            status: newStatus,
+            level: newStatus === "approved" ? "approved" : "not approved" as "approved" | "not approved",
+            rejectionReason: reason || item.rejectionReason,
+          }
+        }
+        return item
+      }) as Produce[]
+      
+      setProduce(updatedProduce)
+      filterProduceByTab(updatedProduce, activeTab)
       
       toast({
         title: "Success",
         description: `Produce ${newStatus} successfully`,
       })
       
-      // Close rejection dialog if open
-      if (newStatus === "rejected") {
-        setIsRejectDialogOpen(false)
-        setRejectionReason("")
-      }
+      // Close dialogs and reset states
+      setSelectedProduce(null)
+      setIsRejectDialogOpen(false)
+      setRejectionReason("")
     } catch (error) {
       console.error("Error updating produce status:", error)
       toast({
@@ -285,6 +315,19 @@ export default function ProducePage() {
     )
   }
 
+  const getTabBadgeCount = (tab: TabType) => {
+    switch (tab) {
+      case "pending":
+        return produce.filter(item => item.status === "active" || item.status === "pending").length
+      case "approved":
+        return produce.filter(item => item.status === "approved").length
+      case "rejected":
+        return produce.filter(item => item.status === "rejected").length
+      default:
+        return 0
+    }
+  }
+
   return (
     <div className="flex flex-col h-full">
       <header className="flex h-16 shrink-0 items-center gap-2 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4">
@@ -324,154 +367,177 @@ export default function ProducePage() {
               <CardDescription>Review quality and approve produce listings from farmers</CardDescription>
             </CardHeader>
             <CardContent className="p-6">
-              <div className="flex items-center space-x-2 mb-6">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search produce by name, category, farmer, or tag..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10 h-10"
-                  />
+              <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as TabType)} className="w-full">
+                <TabsList className="grid w-full grid-cols-3 mb-6">
+                  <TabsTrigger value="pending" className="flex items-center gap-2">
+                    Pending
+                    <Badge variant="secondary" className="ml-1">
+                      {getTabBadgeCount("pending")}
+                    </Badge>
+                  </TabsTrigger>
+                  <TabsTrigger value="approved" className="flex items-center gap-2">
+                    Approved
+                    <Badge variant="secondary" className="ml-1">
+                      {getTabBadgeCount("approved")}
+                    </Badge>
+                  </TabsTrigger>
+                  <TabsTrigger value="rejected" className="flex items-center gap-2">
+                    Rejected
+                    <Badge variant="secondary" className="ml-1">
+                      {getTabBadgeCount("rejected")}
+                    </Badge>
+                  </TabsTrigger>
+                </TabsList>
+
+                <div className="flex items-center space-x-2 mb-6">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search produce by name, category, farmer, or tag..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-10 h-10"
+                    />
+                  </div>
                 </div>
-              </div>
-              <div className="rounded-lg border border-border/50 overflow-hidden">
-                <Table>
-                  <TableHeader className="bg-muted/50">
-                    <TableRow>
-                      <TableHead className="font-semibold w-16 text-center">S/N</TableHead>
-                      <TableHead 
-                        className="font-semibold cursor-pointer hover:bg-muted/70 transition-colors"
-                        onClick={() => handleSort("createdAt")}
-                      >
-                        <div className="flex items-center">
-                          Date Created
-                          {getSortIcon("createdAt")}
-                        </div>
-                      </TableHead>
-                      <TableHead className="font-semibold">Produce Details</TableHead>
-                      <TableHead 
-                        className="font-semibold cursor-pointer hover:bg-muted/70 transition-colors"
-                        onClick={() => handleSort("farmerName")}
-                      >
-                        <div className="flex items-center">
-                          Farmer
-                          {getSortIcon("farmerName")}
-                        </div>
-                      </TableHead>
-                      <TableHead 
-                        className="font-semibold cursor-pointer hover:bg-muted/70 transition-colors"
-                        onClick={() => handleSort("price")}
-                      >
-                        <div className="flex items-center">
-                          Quantity & Price
-                          {getSortIcon("price")}
-                        </div>
-                      </TableHead>
-                      <TableHead className="font-semibold">Status</TableHead>
-                      <TableHead className="font-semibold">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {loading ? (
-                      <TableRow>
-                        <TableCell colSpan={7} className="text-center py-8">
-                          <div className="flex items-center justify-center space-x-2">
-                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
-                            <span>Loading produce...</span>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ) : filteredProduce.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={7} className="text-center py-8">
-                          <div className="flex flex-col items-center space-y-2">
-                            <Package className="h-12 w-12 text-muted-foreground/50" />
-                            <span className="text-muted-foreground">No produce found</span>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      filteredProduce.map((item, index) => (
-                        <TableRow key={item.id} className="hover:bg-muted/30 transition-colors">
-                          <TableCell className="text-center font-medium text-muted-foreground">
-                            {index + 1}
-                          </TableCell>
-                          <TableCell>
-                            <div className="space-y-1 text-xs">
-                              <div className="flex items-center">
-                                <Calendar className="h-3 w-3 mr-1 text-muted-foreground" />
-                                <span>{formatDate(item.createdAt)}</span>
-                              </div>
-                              <div className="text-muted-foreground text-xs">
-                                {formatDateTime(item.createdAt).split(",")[1]?.trim()}
-                              </div>
+
+                {/* Pending Tab */}
+                <TabsContent value="pending" className="space-y-4">
+                  <div className="rounded-lg border border-border/50 overflow-hidden">
+                    <Table>
+                      <TableHeader className="bg-muted/50">
+                        <TableRow>
+                          <TableHead className="font-semibold w-16 text-center">S/N</TableHead>
+                          <TableHead 
+                            className="font-semibold cursor-pointer hover:bg-muted/70 transition-colors"
+                            onClick={() => handleSort("createdAt")}
+                          >
+                            <div className="flex items-center">
+                              Date Created
+                              {getSortIcon("createdAt")}
                             </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center space-x-3">
-                              <img
-                                src={item.imageUrl || "/placeholder.svg"}
-                                alt={item.produceName}
-                                className="h-12 w-12 rounded-lg object-cover border"
-                              />
-                              <div>
-                                <div className="font-medium">{item.produceName}</div>
-                                <div className="flex items-center gap-2 mt-1">
-                                  <Badge className={`text-xs ${getCategoryColor(item.category)}`}>
-                                    {item.category}
-                                  </Badge>
-                                  {item.tag && (
-                                    <div className="flex items-center text-xs text-muted-foreground">
-                                      <Tag className="h-3 w-3 mr-1" />
-                                      {item.tag}
+                          </TableHead>
+                          <TableHead className="font-semibold">Produce Details</TableHead>
+                          <TableHead 
+                            className="font-semibold cursor-pointer hover:bg-muted/70 transition-colors"
+                            onClick={() => handleSort("farmerName")}
+                          >
+                            <div className="flex items-center">
+                              Farmer
+                              {getSortIcon("farmerName")}
+                            </div>
+                          </TableHead>
+                          <TableHead 
+                            className="font-semibold cursor-pointer hover:bg-muted/70 transition-colors"
+                            onClick={() => handleSort("price")}
+                          >
+                            <div className="flex items-center">
+                              Quantity & Price
+                              {getSortIcon("price")}
+                            </div>
+                          </TableHead>
+                          <TableHead className="font-semibold">Status</TableHead>
+                          <TableHead className="font-semibold">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {loading ? (
+                          <TableRow>
+                            <TableCell colSpan={7} className="text-center py-8">
+                              <div className="flex items-center justify-center space-x-2">
+                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                                <span>Loading produce...</span>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ) : filteredProduce.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={7} className="text-center py-8">
+                              <div className="flex flex-col items-center space-y-2">
+                                <Package className="h-12 w-12 text-muted-foreground/50" />
+                                <span className="text-muted-foreground">No pending produce found</span>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          filteredProduce.map((item, index) => (
+                            <TableRow key={item.id} className="hover:bg-muted/30 transition-colors">
+                              <TableCell className="text-center font-medium text-muted-foreground">
+                                {index + 1}
+                              </TableCell>
+                              <TableCell>
+                                <div className="space-y-1 text-xs">
+                                  <div className="flex items-center">
+                                    <Calendar className="h-3 w-3 mr-1 text-muted-foreground" />
+                                    <span>{formatDate(item.createdAt)}</span>
+                                  </div>
+                                  <div className="text-muted-foreground text-xs">
+                                    {formatDateTime(item.createdAt).split(",")[1]?.trim()}
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center space-x-3">
+                                  <img
+                                    src={item.imageUrl || "/placeholder.svg"}
+                                    alt={item.produceName}
+                                    className="h-12 w-12 rounded-lg object-cover border"
+                                  />
+                                  <div>
+                                    <div className="font-medium">{item.produceName}</div>
+                                    <div className="flex items-center gap-2 mt-1">
+                                      <Badge className={`text-xs ${getCategoryColor(item.category)}`}>
+                                        {item.category}
+                                      </Badge>
+                                      {item.tag && (
+                                        <div className="flex items-center text-xs text-muted-foreground">
+                                          <Tag className="h-3 w-3 mr-1" />
+                                          {item.tag}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="space-y-1">
+                                  <div className="flex items-center font-medium text-sm">
+                                    <User className="h-3 w-3 mr-1" />
+                                    {item.farmerName}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    ID: {item.userId}...
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="space-y-1">
+                                  <div className="text-sm font-medium flex items-center">
+                                    <Ruler className="h-3 w-3 mr-1" />
+                                    {item.availableQuantity} {item.size}
+                                  </div>
+                                  <div className="flex items-center space-x-2 text-xs text-muted-foreground">
+                                    <DollarSign className="h-3 w-3" />
+                                    <span>₦{item.price.toFixed(2)}/{item.size}</span>
+                                  </div>
+                                  {item.originalPrice > item.price && (
+                                    <div className="text-xs line-through text-muted-foreground">
+                                      ₦{item.originalPrice.toFixed(2)}
                                     </div>
                                   )}
                                 </div>
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="space-y-1">
-                              <div className="flex items-center font-medium text-sm">
-                                <User className="h-3 w-3 mr-1" />
-                                {item.farmerName}
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                ID: {item.userId}...
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="space-y-1">
-                              <div className="text-sm font-medium flex items-center">
-                                <Ruler className="h-3 w-3 mr-1" />
-                                {item.availableQuantity} {item.size}
-                              </div>
-                              <div className="flex items-center space-x-2 text-xs text-muted-foreground">
-                                <DollarSign className="h-3 w-3" />
-                                <span>₦{item.price.toFixed(2)}/{item.size}</span>
-                              </div>
-                              {item.originalPrice > item.price && (
-                                <div className="text-xs line-through text-muted-foreground">
-                                  ₦{item.originalPrice.toFixed(2)}
-                                </div>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell>{getStatusBadge(item.status)}</TableCell>
-                          <TableCell>
-                            <div className="flex items-center space-x-2">
-                              <Button 
-                                variant="outline" 
-                                size="sm" 
-                                className="h-8 w-8 p-0 bg-transparent"
-                                onClick={() => setSelectedProduce(item)}
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                              {item.status === "pending" && (
-                                <>
+                              </TableCell>
+                              <TableCell>{getStatusBadge(item.status)}</TableCell>
+                              <TableCell>
+                                <div className="flex items-center space-x-2">
+                                  <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    className="h-8 w-8 p-0 bg-transparent"
+                                    onClick={() => setSelectedProduce(item)}
+                                  >
+                                    <Eye className="h-4 w-4" />
+                                  </Button>
                                   <Button
                                     variant="outline"
                                     size="sm"
@@ -488,16 +554,318 @@ export default function ProducePage() {
                                   >
                                     <X className="h-4 w-4" />
                                   </Button>
-                                </>
-                              )}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </TabsContent>
+
+                {/* Approved Tab */}
+                <TabsContent value="approved" className="space-y-4">
+                  <div className="rounded-lg border border-border/50 overflow-hidden">
+                    <Table>
+                      <TableHeader className="bg-muted/50">
+                        <TableRow>
+                          <TableHead className="font-semibold w-16 text-center">S/N</TableHead>
+                          <TableHead 
+                            className="font-semibold cursor-pointer hover:bg-muted/70 transition-colors"
+                            onClick={() => handleSort("createdAt")}
+                          >
+                            <div className="flex items-center">
+                              Date Created
+                              {getSortIcon("createdAt")}
                             </div>
-                          </TableCell>
+                          </TableHead>
+                          <TableHead className="font-semibold">Produce Details</TableHead>
+                          <TableHead 
+                            className="font-semibold cursor-pointer hover:bg-muted/70 transition-colors"
+                            onClick={() => handleSort("farmerName")}
+                          >
+                            <div className="flex items-center">
+                              Farmer
+                              {getSortIcon("farmerName")}
+                            </div>
+                          </TableHead>
+                          <TableHead 
+                            className="font-semibold cursor-pointer hover:bg-muted/70 transition-colors"
+                            onClick={() => handleSort("price")}
+                          >
+                            <div className="flex items-center">
+                              Quantity & Price
+                              {getSortIcon("price")}
+                            </div>
+                          </TableHead>
+                          <TableHead className="font-semibold">Status</TableHead>
+                          <TableHead className="font-semibold">Actions</TableHead>
                         </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
+                      </TableHeader>
+                      <TableBody>
+                        {loading ? (
+                          <TableRow>
+                            <TableCell colSpan={7} className="text-center py-8">
+                              <div className="flex items-center justify-center space-x-2">
+                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                                <span>Loading produce...</span>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ) : filteredProduce.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={7} className="text-center py-8">
+                              <div className="flex flex-col items-center space-y-2">
+                                <Package className="h-12 w-12 text-muted-foreground/50" />
+                                <span className="text-muted-foreground">No approved produce found</span>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          filteredProduce.map((item, index) => (
+                            <TableRow key={item.id} className="hover:bg-muted/30 transition-colors">
+                              <TableCell className="text-center font-medium text-muted-foreground">
+                                {index + 1}
+                              </TableCell>
+                              <TableCell>
+                                <div className="space-y-1 text-xs">
+                                  <div className="flex items-center">
+                                    <Calendar className="h-3 w-3 mr-1 text-muted-foreground" />
+                                    <span>{formatDate(item.createdAt)}</span>
+                                  </div>
+                                  <div className="text-muted-foreground text-xs">
+                                    {formatDateTime(item.createdAt).split(",")[1]?.trim()}
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center space-x-3">
+                                  <img
+                                    src={item.imageUrl || "/placeholder.svg"}
+                                    alt={item.produceName}
+                                    className="h-12 w-12 rounded-lg object-cover border"
+                                  />
+                                  <div>
+                                    <div className="font-medium">{item.produceName}</div>
+                                    <div className="flex items-center gap-2 mt-1">
+                                      <Badge className={`text-xs ${getCategoryColor(item.category)}`}>
+                                        {item.category}
+                                      </Badge>
+                                      {item.tag && (
+                                        <div className="flex items-center text-xs text-muted-foreground">
+                                          <Tag className="h-3 w-3 mr-1" />
+                                          {item.tag}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="space-y-1">
+                                  <div className="flex items-center font-medium text-sm">
+                                    <User className="h-3 w-3 mr-1" />
+                                    {item.farmerName}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    ID: {item.userId}...
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="space-y-1">
+                                  <div className="text-sm font-medium flex items-center">
+                                    <Ruler className="h-3 w-3 mr-1" />
+                                    {item.availableQuantity} {item.size}
+                                  </div>
+                                  <div className="flex items-center space-x-2 text-xs text-muted-foreground">
+                                    <DollarSign className="h-3 w-3" />
+                                    <span>₦{item.price.toFixed(2)}/{item.size}</span>
+                                  </div>
+                                  {item.originalPrice > item.price && (
+                                    <div className="text-xs line-through text-muted-foreground">
+                                      ₦{item.originalPrice.toFixed(2)}
+                                    </div>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell>{getStatusBadge(item.status)}</TableCell>
+                              <TableCell>
+                                <div className="flex items-center space-x-2">
+                                  <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    className="h-8 w-8 p-0 bg-transparent"
+                                    onClick={() => setSelectedProduce(item)}
+                                  >
+                                    <Eye className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </TabsContent>
+
+                {/* Rejected Tab */}
+                <TabsContent value="rejected" className="space-y-4">
+                  <div className="rounded-lg border border-border/50 overflow-hidden">
+                    <Table>
+                      <TableHeader className="bg-muted/50">
+                        <TableRow>
+                          <TableHead className="font-semibold w-16 text-center">S/N</TableHead>
+                          <TableHead 
+                            className="font-semibold cursor-pointer hover:bg-muted/70 transition-colors"
+                            onClick={() => handleSort("createdAt")}
+                          >
+                            <div className="flex items-center">
+                              Date Created
+                              {getSortIcon("createdAt")}
+                            </div>
+                          </TableHead>
+                          <TableHead className="font-semibold">Produce Details</TableHead>
+                          <TableHead 
+                            className="font-semibold cursor-pointer hover:bg-muted/70 transition-colors"
+                            onClick={() => handleSort("farmerName")}
+                          >
+                            <div className="flex items-center">
+                              Farmer
+                              {getSortIcon("farmerName")}
+                            </div>
+                          </TableHead>
+                          <TableHead 
+                            className="font-semibold cursor-pointer hover:bg-muted/70 transition-colors"
+                            onClick={() => handleSort("price")}
+                          >
+                            <div className="flex items-center">
+                              Quantity & Price
+                              {getSortIcon("price")}
+                            </div>
+                          </TableHead>
+                          <TableHead className="font-semibold">Status</TableHead>
+                          <TableHead className="font-semibold">Rejection Reason</TableHead>
+                          <TableHead className="font-semibold">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {loading ? (
+                          <TableRow>
+                            <TableCell colSpan={8} className="text-center py-8">
+                              <div className="flex items-center justify-center space-x-2">
+                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                                <span>Loading produce...</span>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ) : filteredProduce.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={8} className="text-center py-8">
+                              <div className="flex flex-col items-center space-y-2">
+                                <Package className="h-12 w-12 text-muted-foreground/50" />
+                                <span className="text-muted-foreground">No rejected produce found</span>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          filteredProduce.map((item, index) => (
+                            <TableRow key={item.id} className="hover:bg-muted/30 transition-colors">
+                              <TableCell className="text-center font-medium text-muted-foreground">
+                                {index + 1}
+                              </TableCell>
+                              <TableCell>
+                                <div className="space-y-1 text-xs">
+                                  <div className="flex items-center">
+                                    <Calendar className="h-3 w-3 mr-1 text-muted-foreground" />
+                                    <span>{formatDate(item.createdAt)}</span>
+                                  </div>
+                                  <div className="text-muted-foreground text-xs">
+                                    {formatDateTime(item.createdAt).split(",")[1]?.trim()}
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center space-x-3">
+                                  <img
+                                    src={item.imageUrl || "/placeholder.svg"}
+                                    alt={item.produceName}
+                                    className="h-12 w-12 rounded-lg object-cover border"
+                                  />
+                                  <div>
+                                    <div className="font-medium">{item.produceName}</div>
+                                    <div className="flex items-center gap-2 mt-1">
+                                      <Badge className={`text-xs ${getCategoryColor(item.category)}`}>
+                                        {item.category}
+                                      </Badge>
+                                      {item.tag && (
+                                        <div className="flex items-center text-xs text-muted-foreground">
+                                          <Tag className="h-3 w-3 mr-1" />
+                                          {item.tag}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="space-y-1">
+                                  <div className="flex items-center font-medium text-sm">
+                                    <User className="h-3 w-3 mr-1" />
+                                    {item.farmerName}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    ID: {item.userId}...
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="space-y-1">
+                                  <div className="text-sm font-medium flex items-center">
+                                    <Ruler className="h-3 w-3 mr-1" />
+                                    {item.availableQuantity} {item.size}
+                                  </div>
+                                  <div className="flex items-center space-x-2 text-xs text-muted-foreground">
+                                    <DollarSign className="h-3 w-3" />
+                                    <span>₦{item.price.toFixed(2)}/{item.size}</span>
+                                  </div>
+                                  {item.originalPrice > item.price && (
+                                    <div className="text-xs line-through text-muted-foreground">
+                                      ₦{item.originalPrice.toFixed(2)}
+                                    </div>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell>{getStatusBadge(item.status)}</TableCell>
+                              <TableCell>
+                                <div className="max-w-xs">
+                                  <p className="text-sm text-muted-foreground truncate" title={item.rejectionReason}>
+                                    {item.rejectionReason || "No reason provided"}
+                                  </p>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center space-x-2">
+                                  <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    className="h-8 w-8 p-0 bg-transparent"
+                                    onClick={() => setSelectedProduce(item)}
+                                  >
+                                    <Eye className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </TabsContent>
+              </Tabs>
             </CardContent>
           </Card>
         </div>
@@ -581,6 +949,13 @@ export default function ProducePage() {
                   <p className="text-xs text-muted-foreground">Updated: {formatDateTime(selectedProduce.updatedAt)}</p>
                 </div>
               </div>
+
+              {selectedProduce.rejectionReason && (
+                <div className="py-4">
+                  <Label className="text-sm font-medium">Rejection Reason</Label>
+                  <p className="mt-1 text-sm text-red-600">{selectedProduce.rejectionReason}</p>
+                </div>
+              )}
               
               <DialogFooter>
                 <Button 
@@ -589,7 +964,7 @@ export default function ProducePage() {
                 >
                   Close
                 </Button>
-                {selectedProduce.status === "active" && (
+                {(selectedProduce.status === "active" || selectedProduce.status === "pending") && (
                   <>
                     <Button
                       onClick={() => updateProduceStatus(selectedProduce.id, "approved")}

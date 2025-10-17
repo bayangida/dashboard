@@ -24,6 +24,7 @@ import {
 import { collection, query, where, getDocs, getCountFromServer, orderBy, Timestamp } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { useToast } from "@/hooks/use-toast"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 interface DashboardStats {
   totalUsers: number
@@ -66,8 +67,8 @@ const transactionData = [
   { name: "Pending", value: 10, color: "#6B7280" },
 ]
 
-// Custom Tooltip Component
-const CustomTooltip = ({ active, payload, label }: any) => {
+// Custom Tooltip Component for Daily Downloads
+const DailyDownloadsTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
     return (
@@ -79,11 +80,25 @@ const CustomTooltip = ({ active, payload, label }: any) => {
             {entry.name}: <span className="font-medium">{entry.value}</span>
           </p>
         ))}
-        {data.total && (
-          <p className="text-sm font-medium text-gray-800 mt-1 border-t pt-1">
-            Total: {data.total}
+      </div>
+    );
+  }
+  return null;
+};
+
+// Custom Tooltip Component for Revenue
+const RevenueTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    return (
+      <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
+        <p className="font-semibold text-gray-800">{data.fullDate}</p>
+        <p className="text-sm text-gray-600 mb-2">{label}</p>
+        {payload.map((entry: any, index: number) => (
+          <p key={index} className="text-sm" style={{ color: entry.color }}>
+            {entry.name}: <span className="font-medium">₦{entry.value.toLocaleString()}</span>
           </p>
-        )}
+        ))}
       </div>
     );
   }
@@ -107,8 +122,10 @@ export default function DashboardPage() {
   })
   const [dailySignups, setDailySignups] = useState<DailySignupData[]>([])
   const [weeklyData, setWeeklyData] = useState<any[]>([])
+  const [monthlyData, setMonthlyData] = useState<any[]>([])
   const [revenueData, setRevenueData] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [timeRange, setTimeRange] = useState<"week" | "month">("week")
   const { toast } = useToast()
 
   useEffect(() => {
@@ -208,6 +225,10 @@ export default function DashboardPage() {
         const weeklyChartData = processWeeklyData(usersData)
         setWeeklyData(weeklyChartData)
 
+        // Process monthly data for user growth trends
+        const monthlyChartData = processMonthlyData(usersData)
+        setMonthlyData(monthlyChartData)
+
         // Process weekly revenue data
         const weeklyRevenueData = processWeeklyRevenue(transactionsData)
         setRevenueData(weeklyRevenueData)
@@ -300,6 +321,39 @@ export default function DashboardPage() {
 
         return {
           week,
+          users,
+          farmers,
+          drivers,
+          consumers,
+          revenue
+        }
+      })
+    }
+
+    const processMonthlyData = (usersData: UserData[]): any[] => {
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+      const currentYear = new Date().getFullYear()
+      
+      return months.map((month, monthIndex) => {
+        const monthStart = new Date(currentYear, monthIndex, 1)
+        const monthEnd = new Date(currentYear, monthIndex + 1, 0, 23, 59, 59, 999)
+
+        const monthUsers = usersData.filter(user => {
+          if (!user.createdAt) return false
+          const userDate = user.createdAt.toDate()
+          return userDate >= monthStart && userDate <= monthEnd
+        })
+
+        const farmers = monthUsers.filter(user => user.userType === "farmer").length
+        const drivers = monthUsers.filter(user => user.userType === "driver").length
+        const consumers = monthUsers.filter(user => user.userType === "user").length
+        const users = monthUsers.length
+
+        // Calculate revenue for the month (you would need to fetch transaction data for this)
+        const revenue = Math.floor(users * 1500) // Placeholder calculation
+
+        return {
+          month,
           users,
           farmers,
           drivers,
@@ -705,7 +759,7 @@ export default function DashboardPage() {
                       radius={[4, 4, 0, 0]}
                       opacity={0.8}
                     />
-                    <ChartTooltip content={<CustomTooltip />} />
+                    <ChartTooltip content={<DailyDownloadsTooltip />} />
                   </BarChart>
                 </ResponsiveContainer>
               </ChartContainer>
@@ -757,7 +811,7 @@ export default function DashboardPage() {
                       radius={[4, 4, 0, 0]}
                       opacity={0.8}
                     />
-                    <ChartTooltip content={<CustomTooltip />} />
+                    <ChartTooltip content={<DailyDownloadsTooltip />} />
                   </BarChart>
                 </ResponsiveContainer>
               </ChartContainer>
@@ -809,7 +863,7 @@ export default function DashboardPage() {
                       radius={[4, 4, 0, 0]}
                       opacity={0.8}
                     />
-                    <ChartTooltip content={<CustomTooltip />} />
+                    <ChartTooltip content={<DailyDownloadsTooltip />} />
                   </BarChart>
                 </ResponsiveContainer>
               </ChartContainer>
@@ -862,7 +916,7 @@ export default function DashboardPage() {
                       fill="url(#colorTotal)"
                       strokeWidth={2}
                     />
-                    <ChartTooltip content={<CustomTooltip />} />
+                    <ChartTooltip content={<DailyDownloadsTooltip />} />
                   </AreaChart>
                 </ResponsiveContainer>
               </ChartContainer>
@@ -872,16 +926,29 @@ export default function DashboardPage() {
 
         {/* Charts Section */}
         <div className="grid gap-6 md:grid-cols-2">
-          {/* User Growth Chart - Weekly */}
+          {/* User Growth Chart - Weekly/Monthly */}
           <Card className="border-0 shadow-lg">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white">
-                  <TrendingUp className="h-4 w-4" />
-                </div>
-                Weekly User Growth Trends
-              </CardTitle>
-              <CardDescription>Weekly user acquisition across all categories</CardDescription>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white">
+                    <TrendingUp className="h-4 w-4" />
+                  </div>
+                  User Growth Trends
+                </CardTitle>
+                <CardDescription>
+                  {timeRange === "week" ? "Weekly user acquisition across all categories" : "Monthly user acquisition across all categories"}
+                </CardDescription>
+              </div>
+              <Select value={timeRange} onValueChange={(value: "week" | "month") => setTimeRange(value)}>
+                <SelectTrigger className="w-[120px]">
+                  <SelectValue placeholder="Select range" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="week">Weekly</SelectItem>
+                  <SelectItem value="month">Monthly</SelectItem>
+                </SelectContent>
+              </Select>
             </CardHeader>
             <CardContent>
               <ChartContainer
@@ -894,7 +961,7 @@ export default function DashboardPage() {
                 className="h-[300px]"
               >
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={weeklyData}>
+                  <AreaChart data={timeRange === "week" ? weeklyData : monthlyData}>
                     <defs>
                       <linearGradient id="colorUsers" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3} />
@@ -914,7 +981,7 @@ export default function DashboardPage() {
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                    <XAxis dataKey="week" stroke="#6B7280" />
+                    <XAxis dataKey={timeRange === "week" ? "week" : "month"} stroke="#6B7280" />
                     <YAxis stroke="#6B7280" />
                     <ChartTooltip content={<ChartTooltipContent />} />
                     <Area
@@ -1028,7 +1095,7 @@ export default function DashboardPage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                   <XAxis dataKey="day" stroke="#6B7280" />
                   <YAxis stroke="#6B7280" />
-                  <ChartTooltip content={<CustomTooltip />} />
+                  <ChartTooltip content={<RevenueTooltip />} />
                   <Bar dataKey="revenue" fill="url(#colorRevenue)" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>

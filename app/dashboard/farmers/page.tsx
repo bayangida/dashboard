@@ -9,10 +9,11 @@ import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
 import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage, BreadcrumbLink } from "@/components/ui/breadcrumb"
 import { Input } from "@/components/ui/input"
-import { Search, Eye, CheckCircle, X, ArrowUpDown } from "lucide-react"
-import { collection, getDocs, doc, updateDoc, query, where } from "firebase/firestore"
+import { Search, Eye, CheckCircle, X, ArrowUpDown, User } from "lucide-react"
+import { collection, getDocs, doc, updateDoc, query, where, getDoc } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { useToast } from "@/hooks/use-toast"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
 interface Farmer {
   id: string
@@ -21,8 +22,6 @@ interface Farmer {
   email?: string
   phone: string
   farmLocation?: string
-  farmSize?: string
-  cropTypes?: string[]
   status: "pending" | "approved" | "rejected"
   createdAt: { seconds: number; nanoseconds: number } | Date
   verified: boolean
@@ -42,31 +41,102 @@ export default function FarmersPage() {
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc")
   const { toast } = useToast()
 
+  const fetchFarmerLocation = async (farmerId: string): Promise<string> => {
+    try {
+      // First try to get default address
+      const defaultAddressQuery = query(
+        collection(db, "users", farmerId, "addresses"),
+        where("isDefault", "==", true),
+        where("isDefault", "==", true)
+      )
+      
+      const defaultAddressSnapshot = await getDocs(defaultAddressQuery)
+      
+      if (defaultAddressSnapshot.docs.length > 0) {
+        const doc = defaultAddressSnapshot.docs[0]
+        const data = doc.data()
+        const address = data.address || 'Address not available'
+        const city = data.city || ''
+        const state = data.state || ''
+
+        let location = address
+        if (city && state) {
+          location = `${city}, ${state}`
+        } else if (city) {
+          location = city
+        } else if (state) {
+          location = state
+        }
+
+        return location
+      }
+
+      // If no default address, get the first address
+      const addressesQuery = query(
+        collection(db, "users", farmerId, "addresses")
+      )
+      
+      const addressesSnapshot = await getDocs(addressesQuery)
+      
+      if (addressesSnapshot.docs.length > 0) {
+        const doc = addressesSnapshot.docs[0]
+        const data = doc.data()
+        const address = data.address || 'Address not available'
+        const city = data.city || ''
+        const state = data.state || ''
+
+        let location = address
+        if (city && state) {
+          location = `${city}, ${state}`
+        } else if (city) {
+          location = city
+        } else if (state) {
+          location = state
+        }
+
+        return location
+      }
+
+      return 'Location not available'
+    } catch (error) {
+      console.error("Error fetching farmer location:", error)
+      return 'Error loading location'
+    }
+  }
+
   useEffect(() => {
     const fetchFarmers = async () => {
       try {
-        // Query users collection where userType is 'farmer' without orderBy
-        const q = query(collection(db, "users"), where("userType", "==", "farmer"))
+        // Query users collection where userType is 'farmer'
+        const q = query(
+          collection(db, "users"), 
+          where("userType", "==", "farmer")
+        )
         const farmersSnapshot = await getDocs(q)
         
-        const farmersData = farmersSnapshot.docs.map((doc) => {
+        // Fetch farmers data with their locations
+        const farmersDataPromises = farmersSnapshot.docs.map(async (doc) => {
           const data = doc.data()
+          
+          // Fetch the farmer's location from their addresses collection
+          const farmLocation = await fetchFarmerLocation(doc.id)
+
           return {
             id: doc.id,
             firstName: data.firstName || '',
             lastName: data.lastName || '',
             email: data.email || '',
             phone: data.phone || '',
-            farmLocation: data.farmLocation || 'Not specified',
-            farmSize: data.farmSize || 'Not specified',
-            cropTypes: data.cropTypes || [],
+            farmLocation: farmLocation,
             status: data.verified ? "approved" : "pending",
             createdAt: data.createdAt || new Date(),
             verified: data.verified || false,
             userType: data.userType || 'farmer',
             photoUrl: data.photoUrl || ''
           }
-        }) as Farmer[]
+        })
+
+        const farmersData = await Promise.all(farmersDataPromises) as Farmer[]
 
         // Sort by createdAt on client side initially
         const sortedFarmers = sortFarmers(farmersData, "createdAt", "desc")
@@ -195,14 +265,15 @@ export default function FarmersPage() {
     }
   }
 
-  const getStatusBadge = (verified: boolean) => {
-    return verified ? (
-      <Badge variant="default" className="bg-green-500">
-        Verified
-      </Badge>
-    ) : (
-      <Badge variant="secondary">Pending Verification</Badge>
-    )
+  const getStatusBadge = (status: "pending" | "approved" | "rejected") => {
+    switch (status) {
+      case "approved":
+        return <Badge variant="default" className="bg-green-500">Verified</Badge>
+      case "rejected":
+        return <Badge variant="destructive">Rejected</Badge>
+      default:
+        return <Badge variant="secondary">Pending Verification</Badge>
+    }
   }
 
   const getSortIcon = (field: SortField) => {
@@ -214,6 +285,10 @@ export default function FarmersPage() {
     ) : (
       <ArrowUpDown className="h-4 w-4" />
     )
+  }
+
+  const getInitials = (firstName: string, lastName: string) => {
+    return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase()
   }
 
   return (
@@ -256,6 +331,7 @@ export default function FarmersPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-12">S.No</TableHead>
+                      <TableHead>Picture</TableHead>
                       <TableHead 
                         className="cursor-pointer hover:bg-accent"
                         onClick={() => handleSort("name")}
@@ -267,8 +343,6 @@ export default function FarmersPage() {
                       </TableHead>
                       <TableHead>Contact</TableHead>
                       <TableHead>Farm Location</TableHead>
-                      <TableHead>Farm Size</TableHead>
-                      <TableHead>Crops</TableHead>
                       <TableHead 
                         className="cursor-pointer hover:bg-accent"
                         onClick={() => handleSort("createdAt")}
@@ -293,13 +367,13 @@ export default function FarmersPage() {
                   <TableBody>
                     {loading ? (
                       <TableRow>
-                        <TableCell colSpan={9} className="text-center">
+                        <TableCell colSpan={8} className="text-center">
                           Loading farmers...
                         </TableCell>
                       </TableRow>
                     ) : filteredFarmers.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={9} className="text-center">
+                        <TableCell colSpan={8} className="text-center">
                           No farmers found
                         </TableCell>
                       </TableRow>
@@ -308,6 +382,14 @@ export default function FarmersPage() {
                         <TableRow key={farmer.id}>
                           <TableCell className="text-center font-medium">
                             {index + 1}
+                          </TableCell>
+                          <TableCell>
+                            <Avatar className="h-8 w-8">
+                              <AvatarImage src={farmer.photoUrl} alt={`${farmer.firstName} ${farmer.lastName}`} />
+                              <AvatarFallback className="bg-blue-100 text-blue-600 text-xs">
+                                {getInitials(farmer.firstName, farmer.lastName)}
+                              </AvatarFallback>
+                            </Avatar>
                           </TableCell>
                           <TableCell className="font-medium">
                             {farmer.firstName} {farmer.lastName}
@@ -318,29 +400,19 @@ export default function FarmersPage() {
                               {farmer.email && <span className="text-sm text-muted-foreground">{farmer.email}</span>}
                             </div>
                           </TableCell>
-                          <TableCell>{farmer.farmLocation}</TableCell>
-                          <TableCell>{farmer.farmSize}</TableCell>
                           <TableCell>
-                            {farmer.cropTypes && farmer.cropTypes.length > 0 ? (
-                              <div className="flex flex-wrap gap-1">
-                                {farmer.cropTypes.map((crop, index) => (
-                                  <Badge key={index} variant="outline" className="text-xs">
-                                    {crop}
-                                  </Badge>
-                                ))}
-                              </div>
-                            ) : (
-                              <span className="text-muted-foreground">Not specified</span>
-                            )}
+                            <div className="max-w-[200px] truncate" title={farmer.farmLocation}>
+                              {farmer.farmLocation}
+                            </div>
                           </TableCell>
                           <TableCell>{formatDate(farmer.createdAt)}</TableCell>
-                          <TableCell>{getStatusBadge(farmer.verified)}</TableCell>
+                          <TableCell>{getStatusBadge(farmer.status)}</TableCell>
                           <TableCell>
                             <div className="flex items-center space-x-2">
                               <Button variant="outline" size="sm">
                                 <Eye className="h-4 w-4" />
                               </Button>
-                              {!farmer.verified && (
+                              {farmer.status === "pending" && (
                                 <>
                                   <Button
                                     variant="outline"
