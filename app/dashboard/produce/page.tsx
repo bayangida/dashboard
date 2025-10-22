@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Search, Eye, CheckCircle, X, Package, Calendar, MapPin, DollarSign, User, Tag, Ruler, ArrowUpDown } from "lucide-react"
-import { collection, getDocs, doc, updateDoc, query, where } from "firebase/firestore"
+import { collection, getDocs, doc, updateDoc, query, where, addDoc, serverTimestamp } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { useToast } from "@/hooks/use-toast"
 
@@ -88,6 +88,27 @@ export default function ProducePage() {
 
     fetchProduce()
   }, [])
+
+  const createNotification = async (produceItem: Produce, newStatus: "approved" | "rejected", reason?: string) => {
+    try {
+      const notificationData = {
+        userId: produceItem.userId,
+        listingId: produceItem.id,
+        produceName: produceItem.produceName,
+        status: newStatus,
+        rejectionReason: reason || "",
+        message: newStatus === "approved" 
+          ? `Your listing "${produceItem.produceName}" has been approved and is now live on the marketplace!` 
+          : `Your listing "${produceItem.produceName}" requires changes. Please review the feedback.`,
+        createdAt: serverTimestamp(),
+        read: false
+      }
+
+      await addDoc(collection(db, "notifications"), notificationData)
+    } catch (error) {
+      console.error("Error creating notification:", error)
+    }
+  }
 
   const filterProduceByTab = (produceList: Produce[], tab: TabType) => {
     let filtered: Produce[] = []
@@ -199,6 +220,12 @@ export default function ProducePage() {
       
       setProduce(updatedProduce)
       filterProduceByTab(updatedProduce, activeTab)
+      
+      // Create notification for the user
+      const produceItem = produce.find(item => item.id === produceId)
+      if (produceItem) {
+        await createNotification(produceItem, newStatus, reason)
+      }
       
       toast({
         title: "Success",
