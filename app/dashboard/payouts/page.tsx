@@ -10,30 +10,32 @@ import { Separator } from "@/components/ui/separator"
 import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage, BreadcrumbLink } from "@/components/ui/breadcrumb"
 import { Input } from "@/components/ui/input"
 import { Search, Eye, CheckCircle, X, DollarSign, Calendar, CreditCard, User } from "lucide-react"
-import { collection, getDocs, doc, updateDoc, query, where } from "firebase/firestore"
+import { collection, getDocs, doc, updateDoc, query, where, getDoc } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { useToast } from "@/hooks/use-toast"
 
 interface PayoutRequest {
   id: string
-  requesterId: string
-  requesterName: string
-  requesterType: "farmer" | "driver"
-  requesterEmail: string
+  withdrawalId: string
+  userId: string
+  userName: string
+  userEmail: string
+  userType: "farmer" | "driver"
   amount: number
   bankName: string
   accountNumber: string
   accountName: string
-  reason: string
+  reason?: string
   requestDate: string
   status: "pending" | "approved" | "rejected" | "processed"
-  earnings: {
+  orderIds: string[]
+  createdAt: string
+  earnings?: {
     totalSales?: number
     totalDeliveries?: number
     commission: number
     period: string
   }
-  documents: string[]
 }
 
 export default function PayoutsPage() {
@@ -46,79 +48,115 @@ export default function PayoutsPage() {
   useEffect(() => {
     const fetchPayouts = async () => {
       try {
-        const payoutsQuery = query(collection(db, "payouts"), where("status", "in", ["pending", "approved"]))
-        const payoutsSnapshot = await getDocs(payoutsQuery)
-        const payoutsData = payoutsSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as PayoutRequest[]
-
+        setLoading(true)
+        
+        // Fetch all withdrawal requests
+        const withdrawalsQuery = query(
+          collection(db, "withdrawals"), 
+          where("status", "in", ["pending", "approved"])
+        )
+        const withdrawalsSnapshot = await getDocs(withdrawalsQuery)
+        
+        const payoutsData: PayoutRequest[] = []
+        
+        // Process each withdrawal and fetch user details
+        for (const withdrawalDoc of withdrawalsSnapshot.docs) {
+          const withdrawalData = withdrawalDoc.data()
+          
+          // Fetch user details to get user type, email, and name
+          const userDoc = await getDoc(doc(db, "users", withdrawalData.userId))
+          const userData = userDoc.data()
+          
+          // Determine user type based on user data or document structure
+          // You might need to adjust this logic based on your actual user structure
+          const userType = userData?.userType || 
+                          (userData?.role === "driver" ? "driver" : "farmer")
+          
+          // Get user name and email
+          const userName = userData?.name || userData?.fullName || userData?.username || "Unknown User"
+          const userEmail = userData?.email || "No email"
+          
+          // Get bank details from user document
+          const bankDetails = userData?.bankDetails || {}
+          
+          // Create payout request object
+          const payoutRequest: PayoutRequest = {
+            id: withdrawalDoc.id,
+            withdrawalId: withdrawalData.withdrawalId || withdrawalDoc.id,
+            userId: withdrawalData.userId,
+            userName,
+            userEmail,
+            userType,
+            amount: withdrawalData.amount || 0,
+            bankName: bankDetails.bankName || withdrawalData.bankName || "Not specified",
+            accountNumber: bankDetails.accountNumber || withdrawalData.accountNumber || "Not specified",
+            accountName: bankDetails.accountName || withdrawalData.accountName || "Not specified",
+            reason: `Withdrawal request for earnings`,
+            requestDate: withdrawalData.createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+            status: withdrawalData.status || "pending",
+            orderIds: withdrawalData.orderIds || [],
+            createdAt: withdrawalData.createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+            earnings: {
+              commission: withdrawalData.amount || 0,
+              period: new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+            }
+          }
+          
+          payoutsData.push(payoutRequest)
+        }
+        
         setPayouts(payoutsData)
         setFilteredPayouts(payoutsData)
+        
       } catch (error) {
         console.error("Error fetching payouts:", error)
-        // Mock data for demonstration
+        
+        // Mock data for demonstration if Firebase fails
         const mockPayouts: PayoutRequest[] = [
           {
             id: "1",
-            requesterId: "farmer-1",
-            requesterName: "Aminu Hassan",
-            requesterType: "farmer",
-            requesterEmail: "aminu@example.com",
+            withdrawalId: "withdrawal-1",
+            userId: "farmer-1",
+            userName: "Aminu Hassan",
+            userEmail: "aminu@example.com",
+            userType: "farmer",
             amount: 150000,
             bankName: "First Bank",
             accountNumber: "1234567890",
             accountName: "Aminu Hassan",
-            reason: "Monthly sales earnings",
+            reason: "Monthly sales earnings withdrawal",
             requestDate: "2024-01-15",
             status: "pending",
+            orderIds: ["order-1", "order-2"],
+            createdAt: "2024-01-15",
             earnings: {
               totalSales: 200000,
               commission: 150000,
-              period: "January 2024",
-            },
-            documents: ["/placeholder.svg?height=100&width=100"],
+              period: "January 2024"
+            }
           },
           {
             id: "2",
-            requesterId: "driver-1",
-            requesterName: "Musa Ibrahim",
-            requesterType: "driver",
-            requesterEmail: "musa@example.com",
+            withdrawalId: "withdrawal-2",
+            userId: "driver-1",
+            userName: "Musa Ibrahim",
+            userEmail: "musa@example.com",
+            userType: "driver",
             amount: 45000,
             bankName: "GTBank",
             accountNumber: "0987654321",
             accountName: "Musa Ibrahim",
-            reason: "Delivery commission for January",
+            reason: "Delivery commission withdrawal",
             requestDate: "2024-01-16",
             status: "pending",
+            orderIds: ["order-3", "order-4"],
+            createdAt: "2024-01-16",
             earnings: {
               totalDeliveries: 30,
               commission: 45000,
-              period: "January 2024",
-            },
-            documents: ["/placeholder.svg?height=100&width=100"],
-          },
-          {
-            id: "3",
-            requesterId: "farmer-2",
-            requesterName: "Fatima Abdullahi",
-            requesterType: "farmer",
-            requesterEmail: "fatima@example.com",
-            amount: 89000,
-            bankName: "UBA",
-            accountNumber: "1122334455",
-            accountName: "Fatima Abdullahi",
-            reason: "Rice sales earnings",
-            requestDate: "2024-01-17",
-            status: "approved",
-            earnings: {
-              totalSales: 120000,
-              commission: 89000,
-              period: "January 2024",
-            },
-            documents: ["/placeholder.svg?height=100&width=100"],
-          },
+              period: "January 2024"
+            }
+          }
         ]
         setPayouts(mockPayouts)
         setFilteredPayouts(mockPayouts)
@@ -133,20 +171,34 @@ export default function PayoutsPage() {
   useEffect(() => {
     const filtered = payouts.filter(
       (payout) =>
-        (payout.requesterName?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
-        (payout.requesterEmail?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
-        (payout.bankName?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
-        (payout.reason?.toLowerCase() || "").includes(searchTerm.toLowerCase()),
+        payout.userName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        payout.userEmail.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        payout.bankName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        payout.accountNumber.toLowerCase().includes(searchTerm.toLowerCase())
     )
     setFilteredPayouts(filtered)
   }, [searchTerm, payouts])
 
   const updatePayoutStatus = async (payoutId: string, newStatus: "approved" | "rejected" | "processed") => {
     try {
-      await updateDoc(doc(db, "payouts", payoutId), {
+      // Update the withdrawal document in Firestore
+      await updateDoc(doc(db, "withdrawals", payoutId), {
         status: newStatus,
         processedDate: newStatus === "processed" ? new Date().toISOString() : null,
+        processedBy: "admin", // You might want to track who processed this
       })
+
+      // If status is processed, you might want to update the related orders
+      if (newStatus === "processed") {
+        const payout = payouts.find(p => p.id === payoutId)
+        if (payout) {
+          // Here you could update the orders to mark them as paid
+          // This depends on your business logic
+          console.log(`Marking orders as paid: ${payout.orderIds.join(', ')}`)
+        }
+      }
+
+      // Update local state
       setPayouts(
         payouts.map((payout) =>
           payout.id === payoutId
@@ -154,9 +206,10 @@ export default function PayoutsPage() {
                 ...payout,
                 status: newStatus,
               }
-            : payout,
-        ),
+            : payout
+        )
       )
+
       toast({
         title: "Success",
         description: `Payout request ${newStatus} successfully`,
@@ -205,6 +258,21 @@ export default function PayoutsPage() {
     }
   }
 
+  const viewPayoutDetails = (payout: PayoutRequest) => {
+    // You can implement a modal or separate page to show detailed payout information
+    toast({
+      title: "Payout Details",
+      description: (
+        <div className="space-y-2">
+          <div><strong>User:</strong> {payout.userName} ({payout.userEmail})</div>
+          <div><strong>Amount:</strong> ₦{payout.amount.toLocaleString()}</div>
+          <div><strong>Bank:</strong> {payout.bankName} - {payout.accountNumber}</div>
+          <div><strong>Orders:</strong> {payout.orderIds.length} orders</div>
+        </div>
+      ),
+    })
+  }
+
   return (
     <div className="flex flex-col h-full">
       <header className="flex h-16 shrink-0 items-center gap-2 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4">
@@ -246,7 +314,7 @@ export default function PayoutsPage() {
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="Search by name, email, bank, or reason..."
+                    placeholder="Search by name, email, bank, or account number..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="pl-10 h-10"
@@ -257,10 +325,9 @@ export default function PayoutsPage() {
                 <Table>
                   <TableHeader className="bg-muted/50">
                     <TableRow>
-                      <TableHead className="font-semibold">Requester</TableHead>
+                      <TableHead className="font-semibold">User</TableHead>
                       <TableHead className="font-semibold">Amount</TableHead>
                       <TableHead className="font-semibold">Bank Details</TableHead>
-                      <TableHead className="font-semibold">Earnings Period</TableHead>
                       <TableHead className="font-semibold">Request Date</TableHead>
                       <TableHead className="font-semibold">Status</TableHead>
                       <TableHead className="font-semibold">Actions</TableHead>
@@ -269,7 +336,7 @@ export default function PayoutsPage() {
                   <TableBody>
                     {loading ? (
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center py-8">
+                        <TableCell colSpan={6} className="text-center py-8">
                           <div className="flex items-center justify-center space-x-2">
                             <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
                             <span>Loading payout requests...</span>
@@ -278,7 +345,7 @@ export default function PayoutsPage() {
                       </TableRow>
                     ) : filteredPayouts.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center py-8">
+                        <TableCell colSpan={6} className="text-center py-8">
                           <div className="flex flex-col items-center space-y-2">
                             <DollarSign className="h-12 w-12 text-muted-foreground/50" />
                             <span className="text-muted-foreground">No payout requests found</span>
@@ -294,16 +361,18 @@ export default function PayoutsPage() {
                                 <User className="h-4 w-4" />
                               </div>
                               <div>
-                                <div className="font-medium">{payout.requesterName}</div>
-                                <div className="text-sm text-muted-foreground">{payout.requesterEmail}</div>
-                                {getRequesterTypeBadge(payout.requesterType)}
+                                <div className="font-medium">{payout.userName}</div>
+                                <div className="text-sm text-muted-foreground">{payout.userEmail}</div>
+                                {getRequesterTypeBadge(payout.userType)}
                               </div>
                             </div>
                           </TableCell>
                           <TableCell>
                             <div className="space-y-1">
                               <div className="text-lg font-bold text-green-600">₦{payout.amount.toLocaleString()}</div>
-                              <div className="text-xs text-muted-foreground">{payout.reason}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {payout.orderIds.length} orders
+                              </div>
                             </div>
                           </TableCell>
                           <TableCell>
@@ -317,23 +386,6 @@ export default function PayoutsPage() {
                             </div>
                           </TableCell>
                           <TableCell>
-                            <div className="space-y-1">
-                              <div className="text-sm font-medium">{payout.earnings.period}</div>
-                              {payout.requesterType === "farmer" ? (
-                                <div className="text-xs text-muted-foreground">
-                                  Sales: ₦{payout.earnings.totalSales?.toLocaleString()}
-                                </div>
-                              ) : (
-                                <div className="text-xs text-muted-foreground">
-                                  Deliveries: {payout.earnings.totalDeliveries}
-                                </div>
-                              )}
-                              <div className="text-xs text-green-600">
-                                Commission: ₦{payout.earnings.commission.toLocaleString()}
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell>
                             <div className="flex items-center space-x-2 text-sm">
                               <Calendar className="h-3 w-3 text-muted-foreground" />
                               <span>{new Date(payout.requestDate).toLocaleDateString()}</span>
@@ -342,7 +394,12 @@ export default function PayoutsPage() {
                           <TableCell>{getStatusBadge(payout.status)}</TableCell>
                           <TableCell>
                             <div className="flex items-center space-x-2">
-                              <Button variant="outline" size="sm" className="h-8 w-8 p-0 bg-transparent">
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                className="h-8 w-8 p-0 bg-transparent"
+                                onClick={() => viewPayoutDetails(payout)}
+                              >
                                 <Eye className="h-4 w-4" />
                               </Button>
                               {payout.status === "pending" && (
