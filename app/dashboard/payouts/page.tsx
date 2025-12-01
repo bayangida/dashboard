@@ -9,7 +9,7 @@ import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
 import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage, BreadcrumbLink } from "@/components/ui/breadcrumb"
 import { Input } from "@/components/ui/input"
-import { Search, Eye, CheckCircle, X, DollarSign, Calendar, CreditCard, User } from "lucide-react"
+import { Search, Eye, CheckCircle, X, DollarSign, Calendar, CreditCard, User, Download } from "lucide-react"
 import { collection, getDocs, doc, updateDoc, query, where, getDoc } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { useToast } from "@/hooks/use-toast"
@@ -273,6 +273,82 @@ export default function PayoutsPage() {
     })
   }
 
+  // Function to convert data to CSV format
+  const convertToCSV = (data: PayoutRequest[]) => {
+    const headers = [
+      'Withdrawal ID',
+      'User Name',
+      'User Email',
+      'User Type',
+      'Amount (₦)',
+      'Bank Name',
+      'Account Number',
+      'Account Name',
+      'Status',
+      'Request Date',
+      'No. of Orders',
+      'Earnings Period'
+    ]
+    
+    const rows = data.map(payout => [
+      payout.withdrawalId,
+      payout.userName,
+      payout.userEmail,
+      payout.userType.toUpperCase(),
+      payout.amount,
+      payout.bankName,
+      payout.accountNumber,
+      payout.accountName,
+      payout.status.toUpperCase(),
+      new Date(payout.requestDate).toLocaleDateString(),
+      payout.orderIds.length,
+      payout.earnings?.period || 'N/A'
+    ])
+    
+    return [headers, ...rows].map(row => row.join(',')).join('\n')
+  }
+
+  // Function to download CSV
+  const downloadCSV = (data: PayoutRequest[], filename: string = 'payouts_export') => {
+    const csvContent = convertToCSV(data)
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    
+    const url = URL.createObjectURL(blob)
+    link.setAttribute('href', url)
+    link.setAttribute('download', `${filename}_${new Date().toISOString().split('T')[0]}.csv`)
+    link.style.visibility = 'hidden'
+    
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    
+    URL.revokeObjectURL(url)
+    
+    toast({
+      title: "Export Successful",
+      description: `Downloaded ${data.length} records as CSV`,
+    })
+  }
+
+  // Function to export all payouts
+  const exportAllPayouts = () => {
+    downloadCSV(payouts, 'all_payouts')
+  }
+
+  // Function to export filtered payouts
+  const exportFilteredPayouts = () => {
+    if (filteredPayouts.length === 0) {
+      toast({
+        title: "No Data",
+        description: "No payouts to export with current filters",
+        variant: "destructive",
+      })
+      return
+    }
+    downloadCSV(filteredPayouts, 'filtered_payouts')
+  }
+
   return (
     <div className="flex flex-col h-full">
       <header className="flex h-16 shrink-0 items-center gap-2 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4">
@@ -303,11 +379,37 @@ export default function PayoutsPage() {
 
           <Card className="border-0 shadow-lg">
             <CardHeader className="bg-gradient-to-r from-purple-50 to-purple-100 dark:from-purple-950 dark:to-purple-900">
-              <CardTitle className="flex items-center gap-2">
-                <DollarSign className="h-5 w-5" />
-                Payout Requests Queue
-              </CardTitle>
-              <CardDescription>Process earnings payouts for farmers and drivers</CardDescription>
+              <div className="flex justify-between items-center">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <DollarSign className="h-5 w-5" />
+                    Payout Requests Queue
+                  </CardTitle>
+                  <CardDescription>Process earnings payouts for farmers and drivers</CardDescription>
+                </div>
+                <div className="flex gap-2">
+                  {filteredPayouts.length > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={exportFilteredPayouts}
+                      className="flex items-center gap-2"
+                    >
+                      <Download className="h-4 w-4" />
+                      Export Filtered ({filteredPayouts.length})
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={exportAllPayouts}
+                    className="flex items-center gap-2"
+                  >
+                    <Download className="h-4 w-4" />
+                    Export All ({payouts.length})
+                  </Button>
+                </div>
+              </div>
             </CardHeader>
             <CardContent className="p-6">
               <div className="flex items-center space-x-2 mb-6">
