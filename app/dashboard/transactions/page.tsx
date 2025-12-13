@@ -19,6 +19,13 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
   Search,
   Eye,
   Truck,
@@ -41,8 +48,15 @@ import {
   Hash,
   DollarSign,
   Weight,
+  Users,
+  Navigation,
+  AlertCircle,
+  Check,
+  Shield,
+  Car,
+  Star as StarIcon,
 } from "lucide-react"
-import { collection, getDocs, doc, updateDoc, query, where, orderBy, Timestamp } from "firebase/firestore"
+import { collection, getDocs, doc, updateDoc, query, where, orderBy, Timestamp, addDoc, getDoc, increment } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { format } from "date-fns"
@@ -67,6 +81,22 @@ interface Address {
   phoneNumber: string
 }
 
+interface Driver {
+  id: string
+  name: string
+  email: string
+  phone: string
+  vehicleType: string
+  isAvailable: boolean
+  address: string
+  licenseNumber: string
+  plateNumber: string
+  userId: string
+  rating?: number
+  completedDeliveries?: number
+  status?: string
+}
+
 interface Order {
   id: string
   orderId: string
@@ -87,6 +117,7 @@ interface Order {
   orderType: "cart_checkout" | "direct_purchase"
   paymentReference: string
   driverId?: string
+  driverName?: string
   assignedAt?: Timestamp
   deliveredAt?: Timestamp
   completedAt?: Timestamp
@@ -112,6 +143,11 @@ export default function TransactionsPage() {
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null)
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false)
+  const [isDriverDialogOpen, setIsDriverDialogOpen] = useState(false)
+  const [availableDrivers, setAvailableDrivers] = useState<Driver[]>([])
+  const [loadingDrivers, setLoadingDrivers] = useState(false)
+  const [selectedDriver, setSelectedDriver] = useState<string>("")
+  const [assigningOrderId, setAssigningOrderId] = useState<string | null>(null)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -171,7 +207,8 @@ export default function TransactionsPage() {
           deliveryStatus: "delivered",
           orderType: "cart_checkout",
           paymentReference: "4b51ff87-bacf-40ae-a2fe-4bfe67aa2e97",
-          driverId: "DaFlUDf5QVdMKDQceAtQm9baxDs2",
+          driverId: "DRV-001",
+          driverName: "Musa Ibrahim",
           assignedAt: Timestamp.fromDate(new Date("2025-11-28T10:56:20Z")),
           deliveredAt: Timestamp.fromDate(new Date("2025-11-29T15:00:02Z")),
           completedAt: Timestamp.fromDate(new Date("2025-11-29T15:01:24Z")),
@@ -217,6 +254,7 @@ export default function TransactionsPage() {
           orderType: "cart_checkout",
           paymentReference: "ref-002",
           driverId: "DRV-001",
+          driverName: "Musa Ibrahim",
           assignedAt: Timestamp.now(),
           estimatedDelivery: Timestamp.fromDate(new Date(Date.now() + 3 * 24 * 60 * 60 * 1000)),
           createdAt: Timestamp.now(),
@@ -272,17 +310,256 @@ export default function TransactionsPage() {
           order.orderId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
           order.buyerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
           order.sellerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          order.buyerEmail?.toLowerCase().includes(searchTerm.toLowerCase())
+          order.buyerEmail?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          order.driverName?.toLowerCase().includes(searchTerm.toLowerCase())
       )
     }
     
     setFilteredOrders(filtered)
   }, [searchTerm, orders, activeTab])
 
+  const fetchAvailableDrivers = async () => {
+    try {
+      setLoadingDrivers(true)
+      setAvailableDrivers([])
+      
+      // Query for available drivers from the drivers collection
+      const driversQuery = query(
+        collection(db, "drivers"),
+        where("isAvailable", "==", true)
+      )
+      
+      const driversSnapshot = await getDocs(driversQuery)
+      const driversData: Driver[] = []
+      
+      for (const driverDoc of driversSnapshot.docs) {
+        const driverData = driverDoc.data()
+        
+        // Check if driver already has active orders (processing or shipped)
+        const activeOrdersQuery = query(
+          collection(db, "orders"),
+          where("driverId", "==", driverDoc.id),
+          where("status", "in", ["processing", "shipped"])
+        )
+        
+        const activeOrders = await getDocs(activeOrdersQuery)
+        
+        // Only include drivers with no active orders
+        if (activeOrders.empty) {
+          driversData.push({
+            id: driverDoc.id,
+            name: driverData.name || "Driver",
+            email: driverData.email || "",
+            phone: driverData.phone || "",
+            vehicleType: driverData.vehicleType || "Vehicle",
+            isAvailable: driverData.isAvailable || false,
+            address: driverData.address || "Location not specified",
+            licenseNumber: driverData.licenseNumber || "No license",
+            plateNumber: driverData.plateNumber || "No plate number",
+            userId: driverData.userId || driverDoc.id,
+            rating: driverData.rating || 0,
+            completedDeliveries: driverData.completedDeliveries || 0,
+            status: driverData.status || "active"
+          })
+        }
+      }
+      
+      setAvailableDrivers(driversData)
+      
+      if (driversData.length === 0) {
+        toast({
+          title: "No Drivers Available",
+          description: "No drivers are currently available. Try again later.",
+          variant: "destructive",
+        })
+      }
+      
+    } catch (error) {
+      console.error("Error fetching drivers:", error)
+      
+      // Mock drivers for demonstration
+      const mockDrivers: Driver[] = [
+        {
+          id: "DRV-001",
+          name: "Musa Ibrahim",
+          email: "musa@example.com",
+          phone: "08012345678",
+          vehicleType: "Pickup Truck",
+          isAvailable: true,
+          rating: 4.8,
+          completedDeliveries: 156,
+          status: "active",
+          address: "123 Driver St, Abuja, Nigeria",
+          licenseNumber: "DL1234567890",
+          plateNumber: "ABJ123XYZ",
+          userId: "DRV-001"
+        },
+        {
+          id: "DRV-002",
+          name: "Tunde Lawal",
+          email: "tunde@example.com",
+          phone: "08087654321",
+          vehicleType: "Delivery Van",
+          isAvailable: true,
+          rating: 4.5,
+          completedDeliveries: 89,
+          status: "active",
+          address: "456 Transport Ave, Lagos, Nigeria",
+          licenseNumber: "DL0987654321",
+          plateNumber: "LAG456ABC",
+          userId: "DRV-002"
+        },
+        {
+          id: "DRV-003",
+          name: "Chinedu Okoro",
+          email: "chinedu@example.com",
+          phone: "08055556666",
+          vehicleType: "Motorcycle",
+          isAvailable: true,
+          rating: 4.9,
+          completedDeliveries: 203,
+          status: "active",
+          address: "789 Rider Rd, Port Harcourt, Nigeria",
+          licenseNumber: "DL2468135790",
+          plateNumber: "PHC789DEF",
+          userId: "DRV-003"
+        }
+      ]
+      
+      setAvailableDrivers(mockDrivers)
+      
+    } finally {
+      setLoadingDrivers(false)
+    }
+  }
+
+  const sendDriverNotification = async (driverId: string, orderId: string, order: Order) => {
+    try {
+      await addDoc(collection(db, "notifications"), {
+        driverId: driverId,
+        orderId: orderId,
+        farmerId: order.sellerId,
+        type: "new_assignment",
+        title: "New Delivery Assignment",
+        message: `You have been assigned order #${order.orderId.substring(0, 8)}`,
+        isRead: false,
+        createdAt: Timestamp.now(),
+        data: {
+          orderId: order.orderId,
+          orderAmount: order.totalAmount,
+          deliveryAddress: order.receiverAddress || order.address.fullAddress,
+          farmerName: order.sellerName,
+          itemsCount: order.items.length,
+          totalItems: order.items.reduce((sum, item) => sum + item.quantity, 0)
+        }
+      })
+      
+      return true
+    } catch (error) {
+      console.error("Error sending notification:", error)
+      return false
+    }
+  }
+
+  const assignDriverToOrder = async (orderId: string, driverId: string) => {
+    try {
+      setAssigningOrderId(orderId)
+      
+      const order = orders.find(o => o.id === orderId)
+      if (!order) {
+        throw new Error("Order not found")
+      }
+      
+      // Get driver details
+      const driverDoc = await getDoc(doc(db, "drivers", driverId))
+      const driverData = driverDoc.data()
+      
+      if (!driverData) {
+        throw new Error("Driver not found")
+      }
+      
+      // Update order with driver assignment
+      const updateData: any = {
+        driverId: driverId,
+        driverName: driverData.name || "Driver",
+        status: "processing",
+        deliveryStatus: "processing",
+        assignedAt: Timestamp.now(),
+        updatedAt: Timestamp.now()
+      }
+      
+      await updateDoc(doc(db, "orders", orderId), updateData)
+
+      // Update driver status to unavailable
+      await updateDoc(doc(db, "drivers", driverId), {
+        isAvailable: false,
+        lastUpdated: Timestamp.now()
+      })
+
+      // Send notification to driver
+      const notificationSent = await sendDriverNotification(driverId, orderId, order)
+      
+      if (!notificationSent) {
+        toast({
+          title: "Warning",
+          description: "Driver assigned but notification failed to send",
+          variant: "destructive",
+        })
+      }
+
+      // Update local state
+      setOrders(prev => prev.map(order =>
+        order.id === orderId
+          ? {
+              ...order,
+              ...updateData
+            }
+          : order
+      ))
+
+      toast({
+        title: "Success",
+        description: `Driver ${driverData.name} assigned to order #${order.orderId}`,
+      })
+      
+      setIsDriverDialogOpen(false)
+      setSelectedDriver("")
+      
+    } catch (error) {
+      console.error("Error assigning driver:", error)
+      toast({
+        title: "Error",
+        description: "Failed to assign driver",
+        variant: "destructive",
+      })
+    } finally {
+      setAssigningOrderId(null)
+    }
+  }
+
+  const openDriverAssignmentDialog = async (orderId: string) => {
+    try {
+      setSelectedOrder(orders.find(o => o.id === orderId) || null)
+      setIsDriverDialogOpen(true)
+      
+      // Fetch all available drivers
+      await fetchAvailableDrivers()
+      
+    } catch (error) {
+      console.error("Error opening driver dialog:", error)
+      toast({
+        title: "Error",
+        description: "Failed to load available drivers",
+        variant: "destructive",
+      })
+    }
+  }
+
   const updateOrderStatus = async (orderId: string, newStatus: OrderStatus) => {
     try {
       setUpdatingOrderId(orderId)
       
+      const order = orders.find(o => o.id === orderId)
       const updateData: any = {
         status: newStatus,
         updatedAt: Timestamp.now()
@@ -294,6 +571,23 @@ export default function TransactionsPage() {
         updateData.deliveryStatus = "delivered"
         updateData.deliveredAt = Timestamp.now()
         updateData.completedAt = Timestamp.now()
+        
+        // If there's a driver, mark them as available again and increment their deliveries
+        if (order?.driverId) {
+          await updateDoc(doc(db, "drivers", order.driverId), {
+            isAvailable: true,
+            completedDeliveries: increment(1),
+            lastUpdated: Timestamp.now()
+          })
+        }
+      } else if (newStatus === "cancelled") {
+        // If there's a driver, mark them as available again
+        if (order?.driverId) {
+          await updateDoc(doc(db, "drivers", order.driverId), {
+            isAvailable: true,
+            lastUpdated: Timestamp.now()
+          })
+        }
       }
       
       await updateDoc(doc(db, "orders", orderId), updateData)
@@ -313,49 +607,6 @@ export default function TransactionsPage() {
       toast({
         title: "Error",
         description: "Failed to update order status",
-        variant: "destructive",
-      })
-    } finally {
-      setUpdatingOrderId(null)
-    }
-  }
-
-  const assignDriver = async (orderId: string) => {
-    try {
-      setUpdatingOrderId(orderId)
-      const driverId = "DRV-001"
-      const driverName = "Musa Ibrahim"
-      
-      await updateDoc(doc(db, "orders", orderId), {
-        status: "processing",
-        deliveryStatus: "processing",
-        driverId: driverId,
-        assignedAt: Timestamp.now(),
-        updatedAt: Timestamp.now()
-      })
-
-      setOrders(prev => prev.map(order =>
-        order.id === orderId
-          ? {
-              ...order,
-              status: "processing",
-              deliveryStatus: "processing",
-              driverId: driverId,
-              assignedAt: Timestamp.now(),
-              updatedAt: Timestamp.now()
-            }
-          : order
-      ))
-
-      toast({
-        title: "Success",
-        description: `Driver ${driverName} assigned to order`,
-      })
-    } catch (error) {
-      console.error("Error assigning driver:", error)
-      toast({
-        title: "Error",
-        description: "Failed to assign driver",
         variant: "destructive",
       })
     } finally {
@@ -417,10 +668,10 @@ export default function TransactionsPage() {
         return (
           <Button
             size="sm"
-            onClick={() => assignDriver(order.id)}
-            disabled={updatingOrderId === order.id}
+            onClick={() => openDriverAssignmentDialog(order.id)}
+            disabled={updatingOrderId === order.id || assigningOrderId === order.id}
           >
-            {updatingOrderId === order.id ? (
+            {(updatingOrderId === order.id || assigningOrderId === order.id) ? (
               <>
                 <Loader2 className="h-3 w-3 mr-1 animate-spin" />
                 Assigning...
@@ -493,6 +744,31 @@ export default function TransactionsPage() {
     return item.quantity * item.price
   }
 
+  const formatRating = (rating?: number) => {
+    if (!rating || rating === 0) return "No rating"
+    return `${rating.toFixed(1)}/5.0`
+  }
+
+  const getRatingStars = (rating: number) => {
+    if (rating === 0) return "No ratings yet"
+    const fullStars = Math.floor(rating)
+    const halfStar = rating % 1 >= 0.5
+    const emptyStars = 5 - fullStars - (halfStar ? 1 : 0)
+    
+    return (
+      <div className="flex items-center">
+        {[...Array(fullStars)].map((_, i) => (
+          <StarIcon key={`full-${i}`} className="h-4 w-4 text-yellow-500 fill-yellow-500" />
+        ))}
+        {halfStar && <StarIcon className="h-4 w-4 text-yellow-500 fill-yellow-500/50" />}
+        {[...Array(emptyStars)].map((_, i) => (
+          <StarIcon key={`empty-${i}`} className="h-4 w-4 text-gray-300" />
+        ))}
+        <span className="ml-1 text-sm font-medium">{rating.toFixed(1)}</span>
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col h-full">
       <header className="flex h-16 shrink-0 items-center gap-2 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4">
@@ -521,7 +797,7 @@ export default function TransactionsPage() {
                 <div className="relative flex-1 max-w-sm">
                   <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="Search by order ID, customer, or seller..."
+                    placeholder="Search by order ID, customer, seller, or driver..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="pl-8"
@@ -576,6 +852,7 @@ export default function TransactionsPage() {
                           <TableHead>Order ID</TableHead>
                           <TableHead>Customer</TableHead>
                           <TableHead>Seller</TableHead>
+                          <TableHead>Driver</TableHead>
                           <TableHead>Items</TableHead>
                           <TableHead>Amount</TableHead>
                           <TableHead>Payment</TableHead>
@@ -587,7 +864,7 @@ export default function TransactionsPage() {
                       <TableBody>
                         {loading ? (
                           <TableRow>
-                            <TableCell colSpan={9} className="text-center py-8">
+                            <TableCell colSpan={10} className="text-center py-8">
                               <div className="flex flex-col items-center justify-center">
                                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mb-2" />
                                 <p className="text-muted-foreground">Loading orders...</p>
@@ -596,7 +873,7 @@ export default function TransactionsPage() {
                           </TableRow>
                         ) : filteredOrders.length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={9} className="text-center py-8">
+                            <TableCell colSpan={10} className="text-center py-8">
                               <div className="flex flex-col items-center justify-center">
                                 <Package className="h-12 w-12 text-muted-foreground mb-2" />
                                 <p className="text-muted-foreground">No {activeTab} orders found</p>
@@ -627,6 +904,16 @@ export default function TransactionsPage() {
                               </TableCell>
                               <TableCell>
                                 <div className="font-medium">{order.sellerName}</div>
+                              </TableCell>
+                              <TableCell>
+                                {order.driverName ? (
+                                  <div>
+                                    <div className="font-medium">{order.driverName}</div>
+                                    <div className="text-xs text-muted-foreground">{order.driverId?.substring(0, 8)}...</div>
+                                  </div>
+                                ) : (
+                                  <div className="text-sm text-muted-foreground">Not assigned</div>
+                                )}
                               </TableCell>
                               <TableCell>
                                 <div className="space-y-1">
@@ -786,6 +1073,45 @@ export default function TransactionsPage() {
                                             </Card>
                                           </div>
 
+                                          {/* Driver Information (if assigned) */}
+                                          {selectedOrder.driverId && (
+                                            <Card>
+                                              <CardHeader className="pb-3">
+                                                <CardTitle className="text-lg flex items-center gap-2">
+                                                  <Truck className="h-5 w-5" />
+                                                  Assigned Driver
+                                                </CardTitle>
+                                              </CardHeader>
+                                              <CardContent className="space-y-3">
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                  <div className="space-y-1">
+                                                    <div className="text-sm text-muted-foreground flex items-center gap-1">
+                                                      <User className="h-3 w-3" />
+                                                      Driver Name
+                                                    </div>
+                                                    <div className="font-medium">{selectedOrder.driverName}</div>
+                                                  </div>
+                                                  <div className="space-y-1">
+                                                    <div className="text-sm text-muted-foreground flex items-center gap-1">
+                                                      <Shield className="h-3 w-3" />
+                                                      Driver ID
+                                                    </div>
+                                                    <div className="font-medium text-xs font-mono">{selectedOrder.driverId}</div>
+                                                  </div>
+                                                </div>
+                                                {selectedOrder.assignedAt && (
+                                                  <div className="space-y-1">
+                                                    <div className="text-sm text-muted-foreground flex items-center gap-1">
+                                                      <Calendar className="h-3 w-3" />
+                                                      Assigned At
+                                                    </div>
+                                                    <div className="font-medium">{formatDate(selectedOrder.assignedAt)}</div>
+                                                  </div>
+                                                )}
+                                              </CardContent>
+                                            </Card>
+                                          )}
+
                                           {/* Delivery Address */}
                                           <Card>
                                             <CardHeader className="pb-3">
@@ -929,18 +1255,6 @@ export default function TransactionsPage() {
                                                   <div className="text-sm text-muted-foreground">Delivery Status</div>
                                                   <div>{getStatusBadge(selectedOrder.deliveryStatus)}</div>
                                                 </div>
-                                                {selectedOrder.driverId && (
-                                                  <div className="space-y-1">
-                                                    <div className="text-sm text-muted-foreground">Driver ID</div>
-                                                    <div className="font-medium text-sm">{selectedOrder.driverId}</div>
-                                                  </div>
-                                                )}
-                                                {selectedOrder.assignedAt && (
-                                                  <div className="space-y-1">
-                                                    <div className="text-sm text-muted-foreground">Assigned At</div>
-                                                    <div className="font-medium">{formatDate(selectedOrder.assignedAt)}</div>
-                                                  </div>
-                                                )}
                                                 {selectedOrder.estimatedDelivery && (
                                                   <div className="space-y-1">
                                                     <div className="text-sm text-muted-foreground">Estimated Delivery</div>
@@ -1133,6 +1447,170 @@ export default function TransactionsPage() {
           </Card>
         </div>
       </div>
+
+      {/* Driver Assignment Dialog */}
+      <Dialog open={isDriverDialogOpen} onOpenChange={setIsDriverDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Assign Driver to Order #{selectedOrder?.orderId}
+            </DialogTitle>
+            <DialogDescription>
+              Select a driver from the list of all available drivers
+            </DialogDescription>
+          </DialogHeader>
+          
+          {loadingDrivers ? (
+            <div className="py-8 flex flex-col items-center justify-center">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mb-2" />
+              <p className="text-muted-foreground">Loading available drivers...</p>
+            </div>
+          ) : availableDrivers.length === 0 ? (
+            <div className="py-8 flex flex-col items-center justify-center">
+              <AlertCircle className="h-12 w-12 text-muted-foreground mb-2" />
+              <p className="text-muted-foreground text-center mb-2">No available drivers found</p>
+              <p className="text-sm text-muted-foreground text-center">
+                All drivers are currently busy or unavailable. Try again later.
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Select Driver ({availableDrivers.length} available)</label>
+                  <Select value={selectedDriver} onValueChange={setSelectedDriver}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choose a driver" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableDrivers.map((driver) => (
+                        <SelectItem key={driver.id} value={driver.id}>
+                          <div className="flex items-center gap-2 py-1">
+                            <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center">
+                              <Truck className="h-4 w-4 text-orange-600" />
+                            </div>
+                            <div className="flex-1">
+                              <div className="font-medium">{driver.name}</div>
+                              <div className="text-xs text-muted-foreground flex items-center gap-1">
+                                <Car className="h-3 w-3" />
+                                {driver.vehicleType}
+                              </div>
+                            </div>
+                            <div className="ml-auto">
+                              {getRatingStars(driver.rating || 0)}
+                            </div>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {selectedDriver && (
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-sm">Selected Driver Details</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {availableDrivers
+                        .filter(driver => driver.id === selectedDriver)
+                        .map((driver) => (
+                          <div key={driver.id} className="space-y-4">
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="space-y-1">
+                                <div className="text-sm text-muted-foreground flex items-center gap-1">
+                                  <User className="h-3 w-3" />
+                                  Name
+                                </div>
+                                <div className="font-medium">{driver.name}</div>
+                              </div>
+                              <div className="space-y-1">
+                                <div className="text-sm text-muted-foreground flex items-center gap-1">
+                                  <Car className="h-3 w-3" />
+                                  Vehicle
+                                </div>
+                                <div className="font-medium">{driver.vehicleType}</div>
+                              </div>
+                              <div className="space-y-1">
+                                <div className="text-sm text-muted-foreground flex items-center gap-1">
+                                  <Phone className="h-3 w-3" />
+                                  Phone
+                                </div>
+                                <div className="font-medium">{driver.phone}</div>
+                              </div>
+                              <div className="space-y-1">
+                                <div className="text-sm text-muted-foreground flex items-center gap-1">
+                                  <Star className="h-3 w-3" />
+                                  Rating
+                                </div>
+                                <div className="font-medium">{formatRating(driver.rating)}</div>
+                              </div>
+                            </div>
+                            
+                            <div className="space-y-1">
+                              <div className="text-sm text-muted-foreground flex items-center gap-1">
+                                <MapPin className="h-3 w-3" />
+                                Address
+                              </div>
+                              <div className="text-sm">{driver.address}</div>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="space-y-1">
+                                <div className="text-sm text-muted-foreground">License Number</div>
+                                <div className="font-medium text-sm font-mono">{driver.licenseNumber}</div>
+                              </div>
+                              <div className="space-y-1">
+                                <div className="text-sm text-muted-foreground">Plate Number</div>
+                                <div className="font-medium text-sm">{driver.plateNumber}</div>
+                              </div>
+                            </div>
+                            
+                            <div className="space-y-1">
+                              <div className="text-sm text-muted-foreground">Completed Deliveries</div>
+                              <div className="font-medium text-sm">{driver.completedDeliveries || 0} deliveries</div>
+                            </div>
+                          </div>
+                        ))
+                      }
+                    </CardContent>
+                  </Card>
+                )}
+
+                <div className="flex gap-2 justify-end pt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setIsDriverDialogOpen(false)
+                      setSelectedDriver("")
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={() => selectedOrder && selectedDriver && assignDriverToOrder(selectedOrder.id, selectedDriver)}
+                    disabled={!selectedDriver || assigningOrderId === selectedOrder?.id}
+                    className="gap-2"
+                  >
+                    {assigningOrderId === selectedOrder?.id ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Assigning...
+                      </>
+                    ) : (
+                      <>
+                        <Check className="h-4 w-4" />
+                        Assign Driver
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

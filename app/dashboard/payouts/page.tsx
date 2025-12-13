@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
@@ -9,10 +9,38 @@ import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
 import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage, BreadcrumbLink } from "@/components/ui/breadcrumb"
 import { Input } from "@/components/ui/input"
-import { Search, Eye, CheckCircle, X, DollarSign, Calendar, CreditCard, User, Download } from "lucide-react"
+import { 
+  Search, 
+  Eye, 
+  CheckCircle, 
+  X, 
+  DollarSign, 
+  Calendar, 
+  CreditCard, 
+  User, 
+  Download,
+  Filter,
+  ChevronDown,
+  FileText
+} from "lucide-react"
 import { collection, getDocs, doc, updateDoc, query, where, getDoc } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { useToast } from "@/hooks/use-toast"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuCheckboxItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 interface PayoutRequest {
   id: string
@@ -38,11 +66,17 @@ interface PayoutRequest {
   }
 }
 
+type StatusFilter = "all" | "pending" | "approved" | "rejected" | "processed"
+
 export default function PayoutsPage() {
   const [payouts, setPayouts] = useState<PayoutRequest[]>([])
   const [filteredPayouts, setFilteredPayouts] = useState<PayoutRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all")
+  const [selectedColumns, setSelectedColumns] = useState<string[]>([
+    "user", "amount", "bankDetails", "date", "status", "actions"
+  ])
   const { toast } = useToast()
 
   useEffect(() => {
@@ -53,7 +87,7 @@ export default function PayoutsPage() {
         // Fetch all withdrawal requests
         const withdrawalsQuery = query(
           collection(db, "withdrawals"), 
-          where("status", "in", ["pending", "approved"])
+          where("status", "in", ["pending", "approved", "rejected", "processed"])
         )
         const withdrawalsSnapshot = await getDocs(withdrawalsQuery)
         
@@ -68,7 +102,6 @@ export default function PayoutsPage() {
           const userData = userDoc.data()
           
           // Determine user type based on user data or document structure
-          // You might need to adjust this logic based on your actual user structure
           const userType = userData?.userType || 
                           (userData?.role === "driver" ? "driver" : "farmer")
           
@@ -106,7 +139,6 @@ export default function PayoutsPage() {
         }
         
         setPayouts(payoutsData)
-        setFilteredPayouts(payoutsData)
         
       } catch (error) {
         console.error("Error fetching payouts:", error)
@@ -148,7 +180,7 @@ export default function PayoutsPage() {
             accountName: "Musa Ibrahim",
             reason: "Delivery commission withdrawal",
             requestDate: "2024-01-16",
-            status: "pending",
+            status: "approved",
             orderIds: ["order-3", "order-4"],
             createdAt: "2024-01-16",
             earnings: {
@@ -156,10 +188,53 @@ export default function PayoutsPage() {
               commission: 45000,
               period: "January 2024"
             }
+          },
+          {
+            id: "3",
+            withdrawalId: "withdrawal-3",
+            userId: "farmer-2",
+            userName: "Chinedu Okoro",
+            userEmail: "chinedu@example.com",
+            userType: "farmer",
+            amount: 75000,
+            bankName: "Access Bank",
+            accountNumber: "2345678901",
+            accountName: "Chinedu Okoro",
+            reason: "Weekly sales withdrawal",
+            requestDate: "2024-01-17",
+            status: "rejected",
+            orderIds: ["order-5"],
+            createdAt: "2024-01-17",
+            earnings: {
+              totalSales: 100000,
+              commission: 75000,
+              period: "January 2024"
+            }
+          },
+          {
+            id: "4",
+            withdrawalId: "withdrawal-4",
+            userId: "driver-2",
+            userName: "Tunde Lawal",
+            userEmail: "tunde@example.com",
+            userType: "driver",
+            amount: 32000,
+            bankName: "Zenith Bank",
+            accountNumber: "3456789012",
+            accountName: "Tunde Lawal",
+            reason: "Delivery commission withdrawal",
+            requestDate: "2024-01-18",
+            status: "processed",
+            orderIds: ["order-6", "order-7", "order-8"],
+            createdAt: "2024-01-18",
+            earnings: {
+              totalDeliveries: 25,
+              commission: 32000,
+              period: "January 2024"
+            }
           }
         ]
         setPayouts(mockPayouts)
-        setFilteredPayouts(mockPayouts)
       } finally {
         setLoading(false)
       }
@@ -169,15 +244,39 @@ export default function PayoutsPage() {
   }, [])
 
   useEffect(() => {
-    const filtered = payouts.filter(
-      (payout) =>
-        payout.userName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        payout.userEmail.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        payout.bankName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        payout.accountNumber.toLowerCase().includes(searchTerm.toLowerCase())
-    )
+    let filtered = payouts
+
+    // Apply search filter
+    if (searchTerm) {
+      filtered = filtered.filter(
+        (payout) =>
+          payout.userName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          payout.userEmail.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          payout.bankName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          payout.accountNumber.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+    }
+
+    // Apply status filter
+    if (statusFilter !== "all") {
+      filtered = filtered.filter((payout) => payout.status === statusFilter)
+    }
+
     setFilteredPayouts(filtered)
-  }, [searchTerm, payouts])
+  }, [searchTerm, statusFilter, payouts])
+
+  // Calculate summary statistics
+  const summaryStats = useMemo(() => {
+    const stats = {
+      total: payouts.length,
+      totalAmount: payouts.reduce((sum, payout) => sum + payout.amount, 0),
+      pending: payouts.filter(p => p.status === "pending").length,
+      approved: payouts.filter(p => p.status === "approved").length,
+      processed: payouts.filter(p => p.status === "processed").length,
+      rejected: payouts.filter(p => p.status === "rejected").length,
+    }
+    return stats
+  }, [payouts])
 
   const updatePayoutStatus = async (payoutId: string, newStatus: "approved" | "rejected" | "processed") => {
     try {
@@ -185,15 +284,13 @@ export default function PayoutsPage() {
       await updateDoc(doc(db, "withdrawals", payoutId), {
         status: newStatus,
         processedDate: newStatus === "processed" ? new Date().toISOString() : null,
-        processedBy: "admin", // You might want to track who processed this
+        processedBy: "admin",
       })
 
-      // If status is processed, you might want to update the related orders
+      // If status is processed, update related orders if needed
       if (newStatus === "processed") {
         const payout = payouts.find(p => p.id === payoutId)
         if (payout) {
-          // Here you could update the orders to mark them as paid
-          // This depends on your business logic
           console.log(`Marking orders as paid: ${payout.orderIds.join(', ')}`)
         }
       }
@@ -259,7 +356,6 @@ export default function PayoutsPage() {
   }
 
   const viewPayoutDetails = (payout: PayoutRequest) => {
-    // You can implement a modal or separate page to show detailed payout information
     toast({
       title: "Payout Details",
       description: (
@@ -268,14 +364,33 @@ export default function PayoutsPage() {
           <div><strong>Amount:</strong> ₦{payout.amount.toLocaleString()}</div>
           <div><strong>Bank:</strong> {payout.bankName} - {payout.accountNumber}</div>
           <div><strong>Orders:</strong> {payout.orderIds.length} orders</div>
+          <div><strong>Request Date:</strong> {new Date(payout.requestDate).toLocaleDateString()}</div>
+          <div><strong>Status:</strong> {payout.status.toUpperCase()}</div>
+          {payout.reason && <div><strong>Reason:</strong> {payout.reason}</div>}
         </div>
       ),
     })
   }
 
   // Function to convert data to CSV format
-  const convertToCSV = (data: PayoutRequest[]) => {
-    const headers = [
+  const convertToCSV = (data: PayoutRequest[], columns: string[] = selectedColumns) => {
+    const headersMap: Record<string, string> = {
+      "user": "User Name",
+      "email": "User Email",
+      "userType": "User Type",
+      "amount": "Amount (₦)",
+      "bankDetails": "Bank Details",
+      "accountNumber": "Account Number",
+      "accountName": "Account Name",
+      "date": "Request Date",
+      "status": "Status",
+      "orders": "No. of Orders",
+      "withdrawalId": "Withdrawal ID",
+      "period": "Earnings Period"
+    }
+
+    // Default headers for export
+    const defaultHeaders = [
       'Withdrawal ID',
       'User Name',
       'User Email',
@@ -305,11 +420,20 @@ export default function PayoutsPage() {
       payout.earnings?.period || 'N/A'
     ])
     
-    return [headers, ...rows].map(row => row.join(',')).join('\n')
+    return [defaultHeaders, ...rows].map(row => row.join(',')).join('\n')
   }
 
   // Function to download CSV
   const downloadCSV = (data: PayoutRequest[], filename: string = 'payouts_export') => {
+    if (data.length === 0) {
+      toast({
+        title: "No Data",
+        description: "No payouts to export",
+        variant: "destructive",
+      })
+      return
+    }
+    
     const csvContent = convertToCSV(data)
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
     const link = document.createElement('a')
@@ -349,6 +473,32 @@ export default function PayoutsPage() {
     downloadCSV(filteredPayouts, 'filtered_payouts')
   }
 
+  // Export by status
+  const exportByStatus = (status: StatusFilter) => {
+    if (status === "all") {
+      exportAllPayouts()
+      return
+    }
+    
+    const statusPayouts = payouts.filter(p => p.status === status)
+    if (statusPayouts.length === 0) {
+      toast({
+        title: "No Data",
+        description: `No ${status} payouts to export`,
+        variant: "destructive",
+      })
+      return
+    }
+    
+    downloadCSV(statusPayouts, `${status}_payouts`)
+  }
+
+  // Reset all filters
+  const resetFilters = () => {
+    setSearchTerm("")
+    setStatusFilter("all")
+  }
+
   return (
     <div className="flex flex-col h-full">
       <header className="flex h-16 shrink-0 items-center gap-2 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4">
@@ -377,9 +527,58 @@ export default function PayoutsPage() {
             <p className="text-muted-foreground">Review and process payout requests from farmers and drivers</p>
           </div>
 
+          {/* Summary Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            <Card className="border-0 shadow-sm">
+              <CardContent className="p-4">
+                <div className="space-y-1">
+                  <div className="text-sm text-muted-foreground">Total Requests</div>
+                  <div className="text-2xl font-bold">{summaryStats.total}</div>
+                  <div className="text-sm">₦{summaryStats.totalAmount.toLocaleString()}</div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border-0 shadow-sm">
+              <CardContent className="p-4">
+                <div className="space-y-1">
+                  <div className="text-sm text-muted-foreground">Pending</div>
+                  <div className="text-2xl font-bold">{summaryStats.pending}</div>
+                  <div className="text-sm">Awaiting review</div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border-0 shadow-sm">
+              <CardContent className="p-4">
+                <div className="space-y-1">
+                  <div className="text-sm text-muted-foreground">Approved</div>
+                  <div className="text-2xl font-bold text-green-600">{summaryStats.approved}</div>
+                  <div className="text-sm">Ready to process</div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border-0 shadow-sm">
+              <CardContent className="p-4">
+                <div className="space-y-1">
+                  <div className="text-sm text-muted-foreground">Processed</div>
+                  <div className="text-2xl font-bold text-blue-600">{summaryStats.processed}</div>
+                  <div className="text-sm">Completed</div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border-0 shadow-sm">
+              <CardContent className="p-4">
+                <div className="space-y-1">
+                  <div className="text-sm text-muted-foreground">Rejected</div>
+                  <div className="text-2xl font-bold text-red-600">{summaryStats.rejected}</div>
+                  <div className="text-sm">Declined requests</div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
           <Card className="border-0 shadow-lg">
             <CardHeader className="bg-gradient-to-r from-purple-50 to-purple-100 dark:from-purple-950 dark:to-purple-900">
-              <div className="flex justify-between items-center">
+              <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
                 <div>
                   <CardTitle className="flex items-center gap-2">
                     <DollarSign className="h-5 w-5" />
@@ -387,42 +586,112 @@ export default function PayoutsPage() {
                   </CardTitle>
                   <CardDescription>Process earnings payouts for farmers and drivers</CardDescription>
                 </div>
-                <div className="flex gap-2">
-                  {filteredPayouts.length > 0 && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={exportFilteredPayouts}
-                      className="flex items-center gap-2"
-                    >
-                      <Download className="h-4 w-4" />
-                      Export Filtered ({filteredPayouts.length})
-                    </Button>
-                  )}
+                <div className="flex flex-wrap gap-2">
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={exportAllPayouts}
-                    className="flex items-center gap-2"
+                    onClick={resetFilters}
+                    disabled={!searchTerm && statusFilter === "all"}
                   >
-                    <Download className="h-4 w-4" />
-                    Export All ({payouts.length})
+                    Reset Filters
                   </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" className="flex items-center gap-2">
+                        <Download className="h-4 w-4" />
+                        Export
+                        <ChevronDown className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuLabel>Export Options</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuCheckboxItem
+                        checked={false}
+                        onCheckedChange={() => exportFilteredPayouts()}
+                      >
+                        Export Filtered ({filteredPayouts.length})
+                      </DropdownMenuCheckboxItem>
+                      <DropdownMenuCheckboxItem
+                        checked={false}
+                        onCheckedChange={() => exportAllPayouts()}
+                      >
+                        Export All ({payouts.length})
+                      </DropdownMenuCheckboxItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuLabel>Export by Status</DropdownMenuLabel>
+                      <DropdownMenuCheckboxItem
+                        checked={false}
+                        onCheckedChange={() => exportByStatus("pending")}
+                      >
+                        Pending ({summaryStats.pending})
+                      </DropdownMenuCheckboxItem>
+                      <DropdownMenuCheckboxItem
+                        checked={false}
+                        onCheckedChange={() => exportByStatus("approved")}
+                      >
+                        Approved ({summaryStats.approved})
+                      </DropdownMenuCheckboxItem>
+                      <DropdownMenuCheckboxItem
+                        checked={false}
+                        onCheckedChange={() => exportByStatus("processed")}
+                      >
+                        Processed ({summaryStats.processed})
+                      </DropdownMenuCheckboxItem>
+                      <DropdownMenuCheckboxItem
+                        checked={false}
+                        onCheckedChange={() => exportByStatus("rejected")}
+                      >
+                        Rejected ({summaryStats.rejected})
+                      </DropdownMenuCheckboxItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </div>
             </CardHeader>
             <CardContent className="p-6">
-              <div className="flex items-center space-x-2 mb-6">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search by name, email, bank, or account number..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10 h-10"
-                  />
+              <div className="flex flex-col lg:flex-row lg:items-center gap-4 mb-6">
+                <div className="flex-1">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search by name, email, bank, or account number..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-10 h-10"
+                    />
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <Filter className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm">Status:</span>
+                  </div>
+                  <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
+                    <SelectTrigger className="w-[180px] h-10">
+                      <SelectValue placeholder="Filter by status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Status ({payouts.length})</SelectItem>
+                      <SelectItem value="pending">Pending ({summaryStats.pending})</SelectItem>
+                      <SelectItem value="approved">Approved ({summaryStats.approved})</SelectItem>
+                      <SelectItem value="processed">Processed ({summaryStats.processed})</SelectItem>
+                      <SelectItem value="rejected">Rejected ({summaryStats.rejected})</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
+
+              <div className="mb-4 flex items-center justify-between">
+                <div className="text-sm text-muted-foreground">
+                  Showing {filteredPayouts.length} of {payouts.length} requests
+                  {statusFilter !== "all" && ` (${statusFilter})`}
+                </div>
+                <div className="text-sm font-medium">
+                  Total: ₦{filteredPayouts.reduce((sum, p) => sum + p.amount, 0).toLocaleString()}
+                </div>
+              </div>
+
               <div className="rounded-lg border border-border/50 overflow-hidden">
                 <Table>
                   <TableHeader className="bg-muted/50">
@@ -449,8 +718,13 @@ export default function PayoutsPage() {
                       <TableRow>
                         <TableCell colSpan={6} className="text-center py-8">
                           <div className="flex flex-col items-center space-y-2">
-                            <DollarSign className="h-12 w-12 text-muted-foreground/50" />
+                            <FileText className="h-12 w-12 text-muted-foreground/50" />
                             <span className="text-muted-foreground">No payout requests found</span>
+                            {(searchTerm || statusFilter !== "all") && (
+                              <Button variant="outline" size="sm" onClick={resetFilters}>
+                                Clear filters
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -459,7 +733,7 @@ export default function PayoutsPage() {
                         <TableRow key={payout.id} className="hover:bg-muted/30 transition-colors">
                           <TableCell>
                             <div className="flex items-center space-x-3">
-                              <div className="p-2 rounded-full bg-purple-100 text-purple-600">
+                              <div className={`p-2 rounded-full ${payout.userType === 'farmer' ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'}`}>
                                 <User className="h-4 w-4" />
                               </div>
                               <div>

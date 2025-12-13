@@ -31,9 +31,8 @@ interface DashboardStats {
   totalFarmers: number
   totalDrivers: number
   totalConsumers: number
-  pendingTransactions: number
-  pendingProduce: number
-  pendingPayouts: number
+  pendingOrders: number
+  completedOrders: number
   monthlyRevenue: number
   weeklyGrowth: number
   userGrowth: number
@@ -55,17 +54,24 @@ interface UserData {
   createdAt: Timestamp
 }
 
-interface TransactionData {
+interface OrderData {
   status: string
-  amount?: number
+  paymentStatus: string
+  deliveryStatus: string
+  totalAmount: number
+  itemsTotal: number
+  deliveryFee: number
   createdAt: Timestamp
+  completedAt?: Timestamp
+  orderType: string
+  orderId: string
 }
 
-const transactionData = [
-  { name: "Completed", value: 65, color: "#B0FF66" },
-  { name: "Processing", value: 25, color: "#042E22" },
-  { name: "Pending", value: 10, color: "#6B7280" },
-]
+interface TransactionStatusData {
+  name: string
+  value: number
+  color: string
+}
 
 // Custom Tooltip Component for Daily Downloads
 const DailyDownloadsTooltip = ({ active, payload, label }: any) => {
@@ -111,9 +117,8 @@ export default function DashboardPage() {
     totalFarmers: 0,
     totalDrivers: 0,
     totalConsumers: 0,
-    pendingTransactions: 0,
-    pendingProduce: 0,
-    pendingPayouts: 0,
+    pendingOrders: 0,
+    completedOrders: 0,
     monthlyRevenue: 0,
     weeklyGrowth: 0,
     userGrowth: 0,
@@ -124,6 +129,7 @@ export default function DashboardPage() {
   const [weeklyData, setWeeklyData] = useState<any[]>([])
   const [monthlyData, setMonthlyData] = useState<any[]>([])
   const [revenueData, setRevenueData] = useState<any[]>([])
+  const [transactionData, setTransactionData] = useState<TransactionStatusData[]>([])
   const [loading, setLoading] = useState(true)
   const [timeRange, setTimeRange] = useState<"week" | "month">("week")
   const { toast } = useToast()
@@ -145,37 +151,64 @@ export default function DashboardPage() {
         // Calculate total downloads (sum of all users)
         const totalDownloads = totalUsers
 
-        // Fetch pending transactions
-        const pendingTransactionsQuery = query(collection(db, "transactions"), where("status", "==", "pending"))
-        const pendingTransactionsSnapshot = await getCountFromServer(pendingTransactionsQuery)
-        const pendingTransactions = pendingTransactionsSnapshot.data().count
+        // Fetch all orders from Firestore
+        const ordersQuery = query(collection(db, "orders"), orderBy("createdAt", "desc"))
+        const ordersSnapshot = await getDocs(ordersQuery)
+        const ordersData: OrderData[] = ordersSnapshot.docs.map(doc => doc.data() as OrderData)
 
-        // Fetch pending produce
-        const pendingProduceQuery = query(collection(db, "produce"), where("status", "==", "pending"))
-        const pendingProduceSnapshot = await getCountFromServer(pendingProduceQuery)
-        const pendingProduce = pendingProduceSnapshot.data().count
+        // Calculate pending orders (orders with status "pending" or "processing")
+        const pendingOrders = ordersData.filter(order => 
+          order.status === "pending" || order.status === "processing"
+        ).length
 
-        // Fetch pending payouts
-        const pendingPayoutsQuery = query(collection(db, "payouts"), where("status", "==", "pending"))
-        const pendingPayoutsSnapshot = await getCountFromServer(pendingPayoutsQuery)
-        const pendingPayouts = pendingPayoutsSnapshot.data().count
+        // Calculate completed orders
+        const completedOrders = ordersData.filter(order => 
+          order.status === "completed" || order.status === "delivered"
+        ).length
 
-        // Fetch transactions for revenue calculation
-        const transactionsQuery = query(collection(db, "transactions"))
-        const transactionsSnapshot = await getDocs(transactionsQuery)
-        const transactionsData: TransactionData[] = transactionsSnapshot.docs.map(doc => doc.data() as TransactionData)
-
-        // Calculate monthly revenue (last 30 days)
+        // Calculate monthly revenue (last 30 days from completed orders)
         const thirtyDaysAgo = new Date()
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
         
-        const monthlyRevenue = transactionsData
-          .filter(transaction => 
-            transaction.createdAt && 
-            transaction.createdAt.toDate() >= thirtyDaysAgo &&
-            transaction.amount
+        const monthlyRevenue = ordersData
+          .filter(order => 
+            order.createdAt && 
+            order.createdAt.toDate() >= thirtyDaysAgo &&
+            order.paymentStatus === "paid" &&
+            (order.status === "completed" || order.status === "delivered")
           )
-          .reduce((sum, transaction) => sum + (transaction.amount || 0), 0)
+          .reduce((sum, order) => sum + (order.totalAmount || 0), 0)
+
+        // Calculate transaction status distribution
+        const totalOrders = ordersData.length
+        const completedCount = ordersData.filter(order => 
+          order.status === "completed" || order.status === "delivered"
+        ).length
+        const processingCount = ordersData.filter(order => 
+          order.status === "processing"
+        ).length
+        const pendingCount = ordersData.filter(order => 
+          order.status === "pending"
+        ).length
+
+        // Update transaction data for pie chart
+        setTransactionData([
+          { 
+            name: "Completed", 
+            value: totalOrders > 0 ? Math.round((completedCount / totalOrders) * 100) : 0, 
+            color: "#B0FF66" 
+          },
+          { 
+            name: "Processing", 
+            value: totalOrders > 0 ? Math.round((processingCount / totalOrders) * 100) : 0, 
+            color: "#042E22" 
+          },
+          { 
+            name: "Pending", 
+            value: totalOrders > 0 ? Math.round((pendingCount / totalOrders) * 100) : 0, 
+            color: "#6B7280" 
+          },
+        ])
 
         // Calculate growth percentage for all users (compared to previous period)
         const sixtyDaysAgo = new Date()
@@ -229,8 +262,8 @@ export default function DashboardPage() {
         const monthlyChartData = processMonthlyData(usersData)
         setMonthlyData(monthlyChartData)
 
-        // Process weekly revenue data
-        const weeklyRevenueData = processWeeklyRevenue(transactionsData)
+        // Process weekly revenue data from orders
+        const weeklyRevenueData = processWeeklyRevenue(ordersData)
         setRevenueData(weeklyRevenueData)
 
         setStats({
@@ -238,9 +271,8 @@ export default function DashboardPage() {
           totalFarmers,
           totalDrivers,
           totalConsumers,
-          pendingTransactions,
-          pendingProduce,
-          pendingPayouts,
+          pendingOrders,
+          completedOrders,
           monthlyRevenue,
           weeklyGrowth,
           userGrowth,
@@ -316,16 +348,12 @@ export default function DashboardPage() {
         const consumers = weekUsers.filter(user => user.userType === "user").length
         const users = weekUsers.length
 
-        // Calculate revenue for the week (you would need to fetch transaction data for this)
-        const revenue = Math.floor(users * 375) // Placeholder calculation
-
         return {
           week,
           users,
           farmers,
           drivers,
-          consumers,
-          revenue
+          consumers
         }
       })
     }
@@ -349,21 +377,17 @@ export default function DashboardPage() {
         const consumers = monthUsers.filter(user => user.userType === "user").length
         const users = monthUsers.length
 
-        // Calculate revenue for the month (you would need to fetch transaction data for this)
-        const revenue = Math.floor(users * 1500) // Placeholder calculation
-
         return {
           month,
           users,
           farmers,
           drivers,
-          consumers,
-          revenue
+          consumers
         }
       })
     }
 
-    const processWeeklyRevenue = (transactionsData: TransactionData[]): any[] => {
+    const processWeeklyRevenue = (ordersData: OrderData[]): any[] => {
       const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
       const today = new Date()
       
@@ -374,14 +398,16 @@ export default function DashboardPage() {
         const dayStart = new Date(dayDate.setHours(0, 0, 0, 0))
         const dayEnd = new Date(dayDate.setHours(23, 59, 59, 999))
 
-        const dayRevenue = transactionsData
-          .filter(transaction => 
-            transaction.createdAt && 
-            transaction.amount &&
-            transaction.createdAt.toDate() >= dayStart &&
-            transaction.createdAt.toDate() <= dayEnd
+        const dayRevenue = ordersData
+          .filter(order => 
+            order.createdAt && 
+            order.totalAmount &&
+            order.paymentStatus === "paid" &&
+            (order.status === "completed" || order.status === "delivered") &&
+            order.createdAt.toDate() >= dayStart &&
+            order.createdAt.toDate() <= dayEnd
           )
-          .reduce((sum, transaction) => sum + (transaction.amount || 0), 0)
+          .reduce((sum, order) => sum + (order.totalAmount || 0), 0)
 
         return {
           day,
@@ -461,23 +487,23 @@ export default function DashboardPage() {
     },
     {
       title: "Pending Orders",
-      value: stats.pendingTransactions,
+      value: stats.pendingOrders,
       description: "Awaiting processing",
       icon: CreditCard,
       color: "from-yellow-500 to-yellow-600",
       textColor: "text-yellow-600",
       trend: "neutral",
-      change: `${stats.pendingTransactions} orders`,
+      change: `${stats.pendingOrders} orders`,
     },
     {
-      title: "Pending Approvals",
-      value: stats.pendingProduce + stats.pendingPayouts,
-      description: "Require attention",
+      title: "Completed Orders",
+      value: stats.completedOrders,
+      description: "Successfully delivered",
       icon: Package,
-      color: "from-red-500 to-red-600",
-      textColor: "text-red-600",
-      trend: "neutral",
-      change: `${stats.pendingProduce + stats.pendingPayouts} items`,
+      color: "from-green-500 to-green-600",
+      textColor: "text-green-600",
+      trend: "up",
+      change: `${stats.completedOrders} orders`,
     },
   ]
 
@@ -633,13 +659,13 @@ export default function DashboardPage() {
                   )}
                 </div>
                 <div className="text-sm text-muted-foreground mt-2">
-                  {((stats.totalFarmers / stats.totalDownloads) * 100).toFixed(1)}% of total downloads
+                  {stats.totalDownloads > 0 ? ((stats.totalFarmers / stats.totalDownloads) * 100).toFixed(1) : 0}% of total downloads
                 </div>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div 
                   className="bg-emerald-500 h-2 rounded-full" 
-                  style={{ width: `${(stats.totalFarmers / stats.totalDownloads) * 100}%` }}
+                  style={{ width: stats.totalDownloads > 0 ? `${(stats.totalFarmers / stats.totalDownloads) * 100}%` : '0%' }}
                 ></div>
               </div>
             </CardContent>
@@ -666,13 +692,13 @@ export default function DashboardPage() {
                   )}
                 </div>
                 <div className="text-sm text-muted-foreground mt-2">
-                  {((stats.totalDrivers / stats.totalDownloads) * 100).toFixed(1)}% of total downloads
+                  {stats.totalDownloads > 0 ? ((stats.totalDrivers / stats.totalDownloads) * 100).toFixed(1) : 0}% of total downloads
                 </div>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div 
                   className="bg-orange-500 h-2 rounded-full" 
-                  style={{ width: `${(stats.totalDrivers / stats.totalDownloads) * 100}%` }}
+                  style={{ width: stats.totalDownloads > 0 ? `${(stats.totalDrivers / stats.totalDownloads) * 100}%` : '0%' }}
                 ></div>
               </div>
             </CardContent>
@@ -699,13 +725,13 @@ export default function DashboardPage() {
                   )}
                 </div>
                 <div className="text-sm text-muted-foreground mt-2">
-                  {((stats.totalConsumers / stats.totalDownloads) * 100).toFixed(1)}% of total downloads
+                  {stats.totalDownloads > 0 ? ((stats.totalConsumers / stats.totalDownloads) * 100).toFixed(1) : 0}% of total downloads
                 </div>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div 
                   className="bg-purple-500 h-2 rounded-full" 
-                  style={{ width: `${(stats.totalConsumers / stats.totalDownloads) * 100}%` }}
+                  style={{ width: stats.totalDownloads > 0 ? `${(stats.totalConsumers / stats.totalDownloads) * 100}%` : '0%' }}
                 ></div>
               </div>
             </CardContent>
@@ -1029,9 +1055,9 @@ export default function DashboardPage() {
                 <div className="p-2 rounded-lg bg-gradient-to-br from-green-500 to-green-600 text-white">
                   <CreditCard className="h-4 w-4" />
                 </div>
-                Transaction Status
+                Order Status Distribution
               </CardTitle>
-              <CardDescription>Current distribution of transaction statuses</CardDescription>
+              <CardDescription>Current distribution of order statuses</CardDescription>
             </CardHeader>
             <CardContent>
               <ChartContainer
@@ -1052,6 +1078,7 @@ export default function DashboardPage() {
                       outerRadius={100}
                       paddingAngle={5}
                       dataKey="value"
+                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
                     >
                       {transactionData.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={entry.color} />
@@ -1075,7 +1102,7 @@ export default function DashboardPage() {
               </div>
               Weekly Revenue Trends
             </CardTitle>
-            <CardDescription>Daily revenue for the current week</CardDescription>
+            <CardDescription>Daily revenue from completed orders (current week)</CardDescription>
           </CardHeader>
           <CardContent>
             <ChartContainer
@@ -1125,22 +1152,22 @@ export default function DashboardPage() {
               <Card className="p-4 hover:shadow-md transition-shadow cursor-pointer border-2 border-transparent hover:border-primary/20">
                 <div className="flex items-center space-x-3">
                   <div className="p-2 rounded-lg bg-green-100 text-green-600">
-                    <Package className="h-5 w-5" />
+                    <CreditCard className="h-5 w-5" />
                   </div>
                   <div>
-                    <p className="font-medium">Approve Produce</p>
-                    <p className="text-sm text-muted-foreground">{stats.pendingProduce} pending</p>
+                    <p className="font-medium">Process Orders</p>
+                    <p className="text-sm text-muted-foreground">{stats.pendingOrders} pending</p>
                   </div>
                 </div>
               </Card>
               <Card className="p-4 hover:shadow-md transition-shadow cursor-pointer border-2 border-transparent hover:border-primary/20">
                 <div className="flex items-center space-x-3">
                   <div className="p-2 rounded-lg bg-yellow-100 text-yellow-600">
-                    <CreditCard className="h-5 w-5" />
+                    <Package className="h-5 w-5" />
                   </div>
                   <div>
-                    <p className="font-medium">Process Orders</p>
-                    <p className="text-sm text-muted-foreground">{stats.pendingTransactions} waiting</p>
+                    <p className="font-medium">View Deliveries</p>
+                    <p className="text-sm text-muted-foreground">Track shipments</p>
                   </div>
                 </div>
               </Card>
@@ -1150,8 +1177,8 @@ export default function DashboardPage() {
                     <DollarSign className="h-5 w-5" />
                   </div>
                   <div>
-                    <p className="font-medium">Handle Payouts</p>
-                    <p className="text-sm text-muted-foreground">{stats.pendingPayouts} requests</p>
+                    <p className="font-medium">Revenue Report</p>
+                    <p className="text-sm text-muted-foreground">Financial overview</p>
                   </div>
                 </div>
               </Card>
